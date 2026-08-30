@@ -21,23 +21,32 @@ class Budget:
         self.ceilings = dict(ceilings)
 
     def spent(self, kind: str) -> float:
-        row = self.ledger.db.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM budget_charges WHERE run_id=? AND kind=?",
-            (self.run_id, kind),
-        ).fetchone()
+        with self.ledger.lock:  # one connection is shared across worker threads
+            row = self.ledger.db.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS total FROM budget_charges WHERE run_id=? AND kind=?",
+                (self.run_id, kind),
+            ).fetchone()
         return float(row["total"])
 
     def charge(self, kind: str, amount: float, note: str | None = None) -> None:
         ceiling = self.ceilings.get(kind)
         if ceiling is not None and self.spent(kind) + amount > ceiling:
+            self.ledger.bus.emit(self.run_id, "budget.tick", {
+                "kind": kind, "spent": self.spent(kind), "ceiling": ceiling,
+                "state": "exceeded",
+            })
             raise BudgetExceeded(
                 f"{kind}: {self.spent(kind)} + {amount} exceeds ceiling {ceiling} for run {self.run_id}"
             )
-        self.ledger.db.execute(
-            "INSERT INTO budget_charges (run_id, kind, amount, note, created_at) VALUES (?,?,?,?,?)",
-            (self.run_id, kind, amount, note, time.time()),
-        )
-        self.ledger.db.commit()
+        with self.ledger.lock:
+            self.ledger.db.execute(
+                "INSERT INTO budget_charges (run_id, kind, amount, note, created_at) VALUES (?,?,?,?,?)",
+                (self.run_id, kind, amount, note, time.time()),
+            )
+            self.ledger.db.commit()
+        self.ledger.bus.emit(self.run_id, "budget.tick", {
+            "kind": kind, "spent": self.spent(kind), "ceiling": ceiling,
+        })
 
     def remaining(self, kind: str) -> float | None:
         ceiling = self.ceilings.get(kind)
