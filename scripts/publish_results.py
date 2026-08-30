@@ -64,6 +64,7 @@ def main() -> int:
     report_text = generate_report(
         run_id, prereg, verdicts["verdicts"], verdicts["sham"],
         verdicts["hermeticity"], ledger, PAPER_TITLE, code_absence=code_absence,
+        adaptive_rows=verdicts.get("adaptive"),
     )
     (run_dir / "report.md").write_text(report_text)
 
