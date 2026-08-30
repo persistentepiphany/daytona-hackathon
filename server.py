@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 REPO = Path(__file__).resolve().parent
@@ -108,9 +109,11 @@ def _worker() -> None:
         run_id = sorted(after)[-1] if after else None
         fields = {"run_id": run_id, "exit_code": code, "ended_at": time.time(),
                   "duration_s": round(time.time() - started, 1)}
-        # auto_run exits 2 when the build loop never reached smoke, 3 when no
-        # claim graded; both are real outcomes, not crashes
-        fields["status"] = "succeeded" if code == 0 else "no_verdicts" if code in (2, 3) else "failed"
+        # auto_run exits 2 when the build loop never reached smoke and 3 when
+        # nothing graded; both still write verdicts.json and report.md, so they
+        # are reportable outcomes rather than crashes
+        fields["status"] = ({0: "succeeded", 2: "build_failed", 3: "no_verdicts"}
+                            .get(code, "failed"))
         if run_id and job.get("publish") and code == 0:
             fields["preview_url"] = _publish(log_path)
         _update(job_id, **fields)
@@ -188,8 +191,24 @@ def get_run(job_id: str) -> dict:
     if job.get("run_id"):
         verdicts = RUN_ROOT / job["run_id"] / "verdicts.json"
         if verdicts.is_file():
-            out["verdicts"] = json.loads(verdicts.read_text())
+            parsed = json.loads(verdicts.read_text())
+            out["verdicts"] = parsed
+            # a degraded run measured generated data, so its verdicts carry
+            # 'NOT COMPARABLE' and the real grade sits in graded_verdict_withheld
+            out["degraded"] = bool(parsed.get("degraded"))
+        out["has_report"] = (RUN_ROOT / job["run_id"] / "report.md").is_file()
     return out
+
+
+@app.get("/runs/{job_id}/report", response_class=PlainTextResponse)
+def get_report(job_id: str) -> str:
+    job = _jobs.get(job_id)
+    if not job or not job.get("run_id"):
+        raise HTTPException(status_code=404, detail="no such job")
+    report = RUN_ROOT / job["run_id"] / "report.md"
+    if not report.is_file():
+        raise HTTPException(status_code=404, detail="no report for this run")
+    return report.read_text()
 
 
 _load()
