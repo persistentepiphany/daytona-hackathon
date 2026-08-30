@@ -10,6 +10,7 @@ import {
   FolderSearch,
   GitBranch,
   Plus,
+  Radio,
   Sparkles,
 } from "lucide-react";
 import {
@@ -18,7 +19,9 @@ import {
   fetchRun,
   fetchRuns,
   isActiveStatus,
+  parseFeed,
   startRun,
+  type FeedEvent,
   type PaperSummary,
   type RunDetail,
   type RunSummary,
@@ -30,11 +33,12 @@ type ActivityProps = {
   icon: React.ReactNode;
   title: string;
   detail: string;
+  description?: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
 };
 
-function Activity({ icon, title, detail, children, defaultOpen = false }: ActivityProps) {
+function Activity({ icon, title, detail, description, children, defaultOpen = false }: ActivityProps) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
@@ -45,8 +49,11 @@ function Activity({ icon, title, detail, children, defaultOpen = false }: Activi
         </span>
         <span className="activity-icon">{icon}</span>
         <span className="activity-label">
-          <strong>{title}</strong>
-          <small>{detail}</small>
+          <span>
+            <strong>{title}</strong>
+            {description && <small className="activity-description">{description}</small>}
+          </span>
+          <small className="activity-detail">{detail}</small>
         </span>
       </button>
       {open && <div className="activity-content">{children}</div>}
@@ -54,13 +61,37 @@ function Activity({ icon, title, detail, children, defaultOpen = false }: Activi
   );
 }
 
-const STAGE_META: Record<string, { title: string; icon: React.ReactNode }> = {
-  intake: { title: "P0 Intake", icon: <FolderSearch size={15} /> },
-  planner: { title: "Planner → claims", icon: <Sparkles size={15} /> },
-  freeze: { title: "G1 Freeze prereg", icon: <GitBranch size={15} /> },
-  build: { title: "P1 Implementer build", icon: <FileSearch size={15} /> },
-  experiments: { title: "P2 Experiments", icon: <GitBranch size={15} /> },
-  verdicts: { title: "P3 Verdicts", icon: <Sparkles size={15} /> },
+const STAGE_META: Record<string, { title: string; description: string; icon: React.ReactNode }> = {
+  intake: {
+    title: "P0 Intake",
+    description: "Classify the paper and identify reproducible claims.",
+    icon: <FolderSearch size={15} />,
+  },
+  planner: {
+    title: "Planner → claims",
+    description: "Turn the paper’s claims into a fixed experiment plan.",
+    icon: <Sparkles size={15} />,
+  },
+  freeze: {
+    title: "G1 Freeze prereg",
+    description: "Approve and lock the plan before experiments can run.",
+    icon: <GitBranch size={15} />,
+  },
+  build: {
+    title: "P1 Implementer build",
+    description: "Build and smoke-test the frozen reproducible environment.",
+    icon: <FileSearch size={15} />,
+  },
+  experiments: {
+    title: "P2 Experiments",
+    description: "Run the locked experiments, controls, and seed checks.",
+    icon: <GitBranch size={15} />,
+  },
+  verdicts: {
+    title: "P3 Verdicts",
+    description: "Grade results against the locked criteria and issue verdicts.",
+    icon: <Sparkles size={15} />,
+  },
 };
 
 function stageDetail(stage: StageState | undefined): string {
@@ -93,6 +124,43 @@ function VerdictTable({ rows }: { rows: VerdictRow[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function LiveFeed({ events, running }: { events: FeedEvent[]; running: boolean }) {
+  const tailRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    tailRef.current?.scrollIntoView({ block: "nearest" });
+  }, [events.length]);
+
+  if (!events.length) return null;
+  const current = events[events.length - 1];
+
+  return (
+    <div className="live-feed">
+      <div className="live-feed-head">
+        <span className={running ? "pulse-dot" : "status-dot"} />
+        <strong>{running ? "Executing" : "Stream complete"}</strong>
+        <span>{running ? current.text : `${events.length} events`}</span>
+      </div>
+      <ol className="live-feed-list">
+        {events.map((event, index) => {
+          const live = running && index === events.length - 1;
+          return (
+            <li
+              className={`feed-event feed-${event.level}${live ? " feed-live" : ""}`}
+              key={`${event.at}-${index}`}
+            >
+              <span className="feed-time">{event.at || "--:--:--"}</span>
+              <span className="feed-stage">{event.label}</span>
+              <span className="feed-text">{event.text}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <div ref={tailRef} />
     </div>
   );
 }
@@ -393,6 +461,7 @@ export default function Dashboard() {
                         icon={meta.icon}
                         title={meta.title}
                         detail={stageDetail(stage)}
+                        description={meta.description}
                         defaultOpen={status === "running" || status === "failed"}
                       >
                         <div className={`tool-detail ${status === "running" ? "tool-running" : ""}`}>
@@ -428,10 +497,20 @@ export default function Dashboard() {
 
                   {!!detail?.logs?.length && (
                     <Activity
+                      icon={<Radio size={15} />}
+                      title="Live feed"
+                      detail={`${detail.logs.length} events`}
+                      defaultOpen
+                    >
+                      <LiveFeed events={parseFeed(detail.logs)} running={working} />
+                    </Activity>
+                  )}
+
+                  {!!detail?.logs?.length && (
+                    <Activity
                       icon={<FileSearch size={15} />}
-                      title="Live log"
+                      title="Raw log"
                       detail={`${detail.logs.length} lines`}
-                      defaultOpen={working}
                     >
                       <pre className="run-log">{detail.logs.slice(-40).join("\n")}</pre>
                     </Activity>

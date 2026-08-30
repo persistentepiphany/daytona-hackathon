@@ -155,6 +155,58 @@ function applyLogLine(stages: Record<string, StageState>, line: string): void {
   }
 }
 
+export type FeedEvent = {
+  at: string;
+  stage: string;
+  label: string;
+  text: string;
+  level: "ok" | "error" | "info";
+};
+
+const FEED_LABELS: Record<string, string> = {
+  intake: "Intake",
+  planner: "Planner",
+  freeze: "Prereg",
+  build: "Implementer",
+  experiments: "Experiment",
+  verdicts: "Judge",
+  done: "Done",
+};
+
+function stageForLine(plain: string): string {
+  if (plain.startsWith("P0")) return "intake";
+  if (plain.startsWith("planner:") || plain.startsWith("contract:")) return "planner";
+  if (plain.startsWith("G1")) return "freeze";
+  if (plain.startsWith("P1") || plain.includes("round ")) return "build";
+  if (plain.startsWith("P2")) return "experiments";
+  if (plain.startsWith("P3")) return "verdicts";
+  if (plain.startsWith("done:")) return "done";
+  return "info";
+}
+
+/** Turns raw `log_tail` lines — from the live API or the demo — into feed rows. */
+export function parseFeed(logs: string[]): FeedEvent[] {
+  return logs.map((line) => {
+    const stamp = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*/);
+    const plain = line.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "");
+    const stage = stageForLine(plain);
+    // "NOT REPRODUCED" contains "REPRODUCED", so negatives must be tested first
+    const level: FeedEvent["level"] =
+      /failed|NOT REPRODUCED|NOT ATTEMPTABLE|OUTSIDE PREREGISTERED|error/i.test(plain)
+        ? "error"
+        : /PASSED|frozen|done:|FOUND|REPRODUCED WITHIN/.test(plain)
+          ? "ok"
+          : "info";
+    return {
+      at: stamp ? stamp[1] : "",
+      stage,
+      label: FEED_LABELS[stage] || "Log",
+      text: plain.replace(/^(P\d|G1)\s*/, ""),
+      level,
+    };
+  });
+}
+
 function stagesFromLogs(logs: string[], status: string): Record<string, StageState> {
   const stages = emptyStages();
   for (const line of logs) applyLogLine(stages, line);
