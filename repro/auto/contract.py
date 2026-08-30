@@ -102,6 +102,11 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
         rule = dict(entry["rule"])
         rule.setdefault("target", claim["reported_value"])
         rule.setdefault("aggregate", "mean")
+        # the planner sometimes returns these as strings; p3 does arithmetic on
+        # them and raises TypeError after the compute has already been paid for
+        for key in ("target", "tolerance"):
+            if key in rule and rule[key] is not None:
+                rule[key] = float(rule[key])
         entry["rule"] = rule
         experiments.append(entry)
     if not experiments:
