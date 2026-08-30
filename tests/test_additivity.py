@@ -308,3 +308,49 @@ def test_the_verifier_is_visible_only_as_a_bundle_and_its_verdicts(tmp_path):
     assert kinds <= {"agent.action", "verdict.emitted"}
     # and the bundle itself still excludes the implementation trace
     assert "secret implementation trace" not in bundle
+
+
+# --- the merge promise -----------------------------------------------------
+
+def test_the_feed_is_off_unless_someone_asks_for_it(tmp_path, monkeypatch):
+    """The promise that makes this feature safe to merge: with REPRO_TELEMETRY unset,
+    a run behaves exactly as it did before the feed existed. No feed events, and - since
+    run_experiment gates the sandbox log tap on the same flag - no extra provider calls
+    either.
+    """
+    monkeypatch.delenv("REPRO_TELEMETRY", raising=False)
+    ledger = Ledger(tmp_path / "ledger.db")
+    ledger.create_run(RUN, paper_hash="p" * 64, prereg_hash=sha256_of(PREREG))
+
+    assert ledger.bus.enabled is False
+
+    ledger.bus.emit(RUN, "run.done", {})
+    ledger.bus.emit(RUN, "log.chunk", {"attempt_id": "att-1", "stream": "stdout",
+                                       "text": "hi"})
+    assert ledger.events_for(RUN) == []
+
+    # the pre-existing path is untouched: legacy kinds still write, unchanged
+    ledger.log_event(RUN, "sandbox_created", {"sandbox_id": "sbx-1", "parent_id": None})
+    rows = ledger.events_for(RUN)
+    assert [r["kind"] for r in rows] == ["sandbox_created"]
+    assert json.loads(rows[0]["payload"]) == {"sandbox_id": "sbx-1", "parent_id": None}
+
+
+def test_opting_in_is_one_environment_variable(tmp_path, monkeypatch):
+    monkeypatch.setenv("REPRO_TELEMETRY", "1")
+    ledger = Ledger(tmp_path / "ledger.db")
+    ledger.create_run(RUN, paper_hash="p" * 64, prereg_hash=sha256_of(PREREG))
+    assert ledger.bus.enabled is True
+    ledger.bus.emit(RUN, "run.done", {})
+    assert [r["kind"] for r in ledger.events_for(RUN)] == ["run.done"]
+
+
+def test_the_default_off_run_makes_no_extra_provider_calls(tmp_path, monkeypatch):
+    """Stated as a call-surface assertion rather than a claim: a feed-off run touches
+    the sandbox exactly as many times as it did before the tap existed."""
+    monkeypatch.delenv("REPRO_TELEMETRY", raising=False)
+    _, adapter = fake_run(tmp_path, enabled=False)
+    tap_only = {"exec_async", "follow_logs", "cancel_async"}
+    assert not [c for c in adapter.calls if c[0] in tap_only]
+    assert not [c for c in adapter.calls
+                if c[0] == "write_file" and ".repro_progress" in c[1][1]]

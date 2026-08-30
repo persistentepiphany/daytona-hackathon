@@ -45,7 +45,7 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 9. `repro report --run-dir runs/calibration/<run-id> --title "..."` — render the report from persisted artifacts.
 10. `repro build --run-dir runs/calibration/<run-id>` — deploy the what-survived page to a sandbox and print the preview URL.
 11. `repro feed --ledger <ledger.db> --run-id <id>` — the live feed on `127.0.0.1:8700` (section 10). Add `--replay paced --speed 4` to play a finished run back.
-12. `REPRO_TELEMETRY=0` — turn the feed off. Evidence files and ledger rows are then byte-identical to a run from before the feature existed; `tests/test_additivity.py` asserts exactly that.
+12. `REPRO_TELEMETRY=1` — turn the live feed on for a run. **It is off by default**, and off means off: no feed events, no sandbox log tap, no extra provider calls. The feed's own scripts set it themselves, so only a hand-run pipeline needs to. Exactly what does and does not differ is stated in section 10.
 
 ## 5. Day-0 verification (live, against the event account)
 
@@ -125,6 +125,12 @@ The dashboard in section 3 reads the ledger after the fact. The feed shows a run
 happens: what the agents are doing, what they are building, and how much longer the
 work can take.
 
+It is **opt-in**. With `REPRO_TELEMETRY` unset a run behaves exactly as it did before
+the feed existed — the bus emits nothing, and the executor starts no log tap, so a
+sandbox sees no extra sessions and no marker file. `REPRO_TELEMETRY=1` turns it on;
+`scripts/feed_driver.py`, `scripts/live_microrun.py` and `scripts/record_calibration.py`
+do that for themselves.
+
 ### Opening it
 
 1. `repro feed --ledger runs/<...>/ledger.db --run-id <id>` then open
@@ -165,6 +171,25 @@ Per-attempt progress is `elapsed/k × (n−k)` over that attempt's own completed
 measured rate, reported only once at least one seed has finished. While an implementer
 round is outstanding no whole-run completion time is shown at all, because the number of
 further rounds is not knowable; LLM turns show elapsed time only.
+
+### What is and is not identical with the feed off
+
+Precisely, because "additive" is worth stating exactly rather than loosely:
+
+1. **Evidence is byte-identical.** `manifest.json`, `metrics.json`, `stdout.log`,
+   `leakage.json`, `checksums.json` and the `evidence_sha` derived from them are the same
+   bytes either way — progress goes to its own side-channel file that is never collected,
+   and the executor's command, redirect and environment are untouched.
+   `tests/test_additivity.py` compares two runs file by file, and asserts the sandbox
+   call surface is identical too.
+2. **Ledger rows are identical**, in every table, with the events table carrying only
+   the pre-existing kinds.
+3. Three things do differ, none of which changes an output. The `events` table gains an
+   index. Its payloads pass through redaction whether the feed is on or off — deliberate,
+   since a run with the feed off must not write a leakier table than one with it on, and
+   a no-op unless a payload actually contains a credential. And the ledger is converted
+   to SQLite's WAL journal mode, which is persistent in the file: copy a `ledger.db`
+   without its `-wal` sidecar and you can lose the tail of a run.
 
 ### What the feed will not carry
 

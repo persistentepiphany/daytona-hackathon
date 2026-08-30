@@ -78,6 +78,7 @@ def start_log_tap(adapter, sandbox_id: str, bus, run_id: str, attempt_id: str,
                   total_seeds: int, held_out: bool = False, work: str = WORK):
     """Arm the progress side channel and start following. Returns None if anything at
     all goes wrong — the experiment carries on regardless."""
+    coalescer = None
     try:
         adapter.write_file(sandbox_id, f"{work}/{MARKER_FILE}",
                            (PROGRESS_FILE + "\n").encode())
@@ -85,4 +86,9 @@ def start_log_tap(adapter, sandbox_id: str, bus, run_id: str, attempt_id: str,
         coalescer.track(attempt_id, total_seeds, held_out=held_out)
         return LogTap(adapter, sandbox_id, coalescer, attempt_id, work).start()
     except Exception:
+        if coalescer is not None:
+            try:  # its flusher thread is already running by now
+                coalescer.close()
+            except Exception:
+                pass
         return None

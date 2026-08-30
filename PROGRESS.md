@@ -38,10 +38,69 @@ Note: no `ARCHITECTURE.md` file accompanied the message in this session; the v2 
 
 ## T12 / T12b — live feed and completion estimates
 
-Built on `t12-live-feed` off `main`. **Held on the branch, not merged** — acceptance
+Built on `t12-live-feed` off `main`. **The feed is opt-in** (`REPRO_TELEMETRY=1`), so
+merging changes a run's behavior in no way at all until someone asks for it.
+
+### Pre-merge audit
+
+An adversarial pass over the diff before merging found five defects, all now fixed and
+covered by tests:
+
+1. **Redaction missed the credential shape this project actually uses.** The lookbehind
+   protecting `config_key` also blocked `PARALLEL_API_KEY=`, `ZAI_API=` and
+   `Authorization: Bearer …` — every prefixed environment variable, which is all of
+   them. `ANTHROPIC_API_KEY=` only appeared to work because its *value* matched the
+   `sk-ant-` prefix rule. The pattern is now two alternations: unambiguous words admit a
+   leading identifier segment, a bare `key` keeps the lookbehind. Tested with those four
+   shapes as positives and `config_key` / `n_estimators` as negatives, plus every
+   manifest derivable from a committed preregistration, unchanged.
+2. **A failing log tap could leak a billed sandbox.** `tap.close()` ran unguarded in
+   `run_experiment`'s `finally`, so a SQLite error inside it skipped `life.stop(sid)`
+   *and* replaced the real `ExperimentError`. Now guarded, as the adjacent
+   `finish_attempt` already was.
+3. **The live feed could drop frames.** The row id was assigned under the ledger lock but
+   the fan-out happened outside it, so two threads could deliver out of order; the
+   subscriber's cursor is monotonic and its catch-up query resumes past the gap, so the
+   lower-numbered event was lost for good. Fan-out now happens inside the lock.
+4. **`journal_mode=WAL` was issued before `busy_timeout`.** Converting an existing
+   database takes an exclusive lock, so opening a ledger the dashboard held made the
+   constructor raise. Order swapped.
+5. **The coalescer thread leaked** when `LogTap.start()` failed, because it is
+   constructed before the tap starts. Closed in the handler.
+
+Also: `policy.telemetry_enabled` was never called, leaving the policy key inert; the
+switch now has one definition that both the policy and the bus use.
+
+### Residual caveats, recorded rather than hidden
+
+1. **WAL is persistent and unconditional.** An existing `ledger.db` is converted in place
+   the first time any driver opens it, and recent commits live in a `-wal` sidecar until
+   checkpoint — `cp ledger.db` on its own can lose the tail of a run. Kept unconditional
+   because a database whose journal mode depends on an environment variable is worse than
+   one that is consistently WAL.
+2. **Redaction is not behind the flag**, so a feed-off run still rewrites a payload that
+   contains a credential. Deliberate: the alternative is that turning the feed off writes
+   a leakier table.
+3. **The log tap's polling fallback is expensive.** If the SDK websocket is ever
+   unavailable, `_poll_logs` re-fetches the whole buffered log every 0.5s and slices by
+   offset — quadratic in output size. The websocket path is what live runs actually used.
+4. **Held-out verdicts stream**, though their targets and tolerances never do. A
+   deliberate call: a verdict is a published output, scored at P3 like every other.
+
+### Concurrency defect fixed in passing
+
+`scripts/auto_run.py` serializes its experiments to one thread with the note *"the
+Ledger's SQLite connection is not safe to share across threads … two concurrent
+experiments raced it into 'cannot commit - no transaction is active'"*. That is this
+branch's `Gates`/`Budget` fix: both were issuing raw `db.execute` on the shared
+connection without holding `ledger.lock`, on the hot path of every `Lifecycle.create`.
+The cause is fixed; the workaround is left in place deliberately, for whoever owns that
+driver to lift when they can verify it.
+
+**Held on the branch, not merged** — acceptance
 item 1 is only partially covered by a live recording (see below) and the merge is the
 user's call. Additive by construction: `REPRO_TELEMETRY=0` restores pre-feature
-behavior exactly, and the suite is 47 pre-existing tests unmodified plus 88 new ones.
+behavior exactly, and the suite is 47 pre-existing tests unmodified plus 106 new ones.
 
 ### Where the brief and the repository disagreed
 

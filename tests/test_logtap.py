@@ -17,6 +17,7 @@ ATT = "att-tap01"
 def ledger(tmp_path):
     led = Ledger(tmp_path / "ledger.db")
     led.create_run(RUN, paper_hash="p" * 64, prereg_hash="h" * 64)
+    led.bus.enabled = True  # the feed is opt-in; these tests are the opting in
     return led
 
 

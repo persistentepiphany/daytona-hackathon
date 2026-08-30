@@ -21,7 +21,9 @@ class Budget:
         self.ceilings = dict(ceilings)
 
     def spent(self, kind: str) -> float:
-        with self.ledger.lock:  # one connection is shared across worker threads
+        # the lock guards this connection, shared across worker threads; it does not
+        # make charge() atomic - the ceiling check above is a separate acquisition
+        with self.ledger.lock:
             row = self.ledger.db.execute(
                 "SELECT COALESCE(SUM(amount), 0) AS total FROM budget_charges WHERE run_id=? AND kind=?",
                 (self.run_id, kind),

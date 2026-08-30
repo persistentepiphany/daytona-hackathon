@@ -152,8 +152,12 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         })
         return metrics
     finally:
-        if tap is not None:
-            tap.close()  # before the stop: auto-delete removes the box under the tap
+        try:
+            if tap is not None:
+                tap.close()  # before the stop: auto-delete removes the box under the tap
+        except Exception:
+            pass  # raising here would skip life.stop() and leak a billed sandbox, and
+                  # would replace the real failure with a telemetry one
         try:
             ledger.finish_attempt(attempt_id, exit_code,
                                   evidence_sha if "evidence_sha" in locals() else None)

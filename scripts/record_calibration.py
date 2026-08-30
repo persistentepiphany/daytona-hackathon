@@ -100,6 +100,7 @@ def main() -> int:
 
     ledger = Ledger(RUN_ROOT / "ledger.db")
     ledger.create_run(run_id, paper_hash=paper["pdf_sha256"], prereg_hash=prereg_hash)
+    ledger.bus.enabled = True  # the feed is opt-in; this driver records with it on
     gates = Gates(ledger)
     budget = Budget(ledger, run_id, {"sandbox_minutes": 4000, "parallel_calls": 12})
     adapter = DaytonaAdapter()

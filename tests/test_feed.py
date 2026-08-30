@@ -17,6 +17,7 @@ RUN = "run-feed"
 def served(tmp_path):
     ledger = Ledger(tmp_path / "ledger.db")
     ledger.create_run(RUN, paper_hash="p" * 64, prereg_hash="h" * 64)
+    ledger.bus.enabled = True  # the feed is opt-in; these tests are the opting in
     server = feed.make_server(str(tmp_path / "ledger.db"), str(tmp_path), port=0,
                               bus=ledger.bus, default_run=RUN)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -204,6 +205,7 @@ def test_ping_keeps_an_idle_stream_open(served, monkeypatch):
 def test_a_run_id_is_required_when_the_server_has_no_default(tmp_path):
     ledger = Ledger(tmp_path / "other.db")
     ledger.create_run(RUN, paper_hash="p" * 64, prereg_hash="h" * 64)
+    ledger.bus.enabled = True
     server = feed.make_server(str(tmp_path / "other.db"), str(tmp_path), port=0,
                               bus=ledger.bus)
     threading.Thread(target=server.serve_forever, daemon=True).start()

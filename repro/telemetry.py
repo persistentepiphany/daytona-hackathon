@@ -20,8 +20,6 @@ import re
 import threading
 import time
 
-from .env import env_key
-
 # closed vocabulary: emit() refuses anything else. Legacy ledger kinds (sandbox_created,
 # manifest_frozen, ...) predate this feature and pass through the _legacy path unchecked.
 KINDS = frozenset({
@@ -52,13 +50,24 @@ _TOKEN_PATTERNS = (
     re.compile(r"gho_[A-Za-z0-9]{12,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{12,}"),
     re.compile(r"dtn_[A-Za-z0-9]{12,}"),
+    # Authorization headers: the scheme is not the secret, what follows it is
+    re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._\-+/=]{8,}"),
 )
 
-# key=value / key: value in free text. The lookbehind keeps `config_key=...` and
-# `--set models.C2.params.n_estimators=10` intact: only a bare secret-ish word counts.
+# key=value / key: value in free text.
+#
+# Two alternations, because one rule cannot do both jobs. The unambiguous words allow a
+# leading identifier segment, so `PARALLEL_API_KEY=`, `ANTHROPIC_API_KEY=` and
+# `ZAI_API=` are caught - a prefix-blind rule missed every real environment variable in
+# this repo. A bare `key` keeps the lookbehind, so `config_key=data.shuffle_labels` and
+# `--set models.C2.params.n_estimators=10` survive intact; those are load-bearing in
+# every manifest the ledger replays from.
 _ASSIGNMENT = re.compile(
-    r"(?i)(?<![\w\-.])(api[_\-]?key|apikey|key|token|secret|password|passwd)"
-    r"(\s*[=:]\s*)([\"']?)([^\s\"'&;,)]{6,})"
+    r"(?i)("
+    r"[\w\-]*(?:api[_\-]?key|apikey|_api|access[_\-]?token|auth[_\-]?token"
+    r"|token|secret|password|passwd)"
+    r"|(?<![\w\-.])key"
+    r")(\s*[=:]\s*)([\"']?)(?!\[REDACTED\])([^\s\"'&;,)]{6,})"
 )
 
 
@@ -87,12 +96,15 @@ def _redact_text(text: str) -> str:
 
 
 def enabled_default() -> bool:
-    """Feed on unless REPRO_TELEMETRY says otherwise. The policy file supplies the
-    default; the environment variable is the runtime switch."""
-    flag = env_key("REPRO_TELEMETRY")
-    if flag is None:
-        return True
-    return flag.strip().lower() not in ("0", "false", "off", "no")
+    """The feed is opt-in: off unless REPRO_TELEMETRY=1 or a policy turns it on.
+
+    Deliberately delegated to the policy module rather than re-reading the variable
+    here, so there is one definition of the switch and the policy key cannot become
+    decoration.
+    """
+    from .orchestrator.policy import telemetry_enabled
+
+    return telemetry_enabled()
 
 
 class Bus:
@@ -134,10 +146,13 @@ class Bus:
             if not self.enabled:
                 return None, 0
         clean = redact(payload)
-        event_id, row_id, created_at = self.ledger._insert_event(run_id, kind, clean)
-        if self.enabled:
-            self._fanout(run_id, {"id": row_id, "event_id": event_id, "kind": kind,
-                                  "payload": clean, "t": created_at})
+        # the row id and the fan-out must be atomic together: a subscriber advances a
+        # strictly monotonic cursor, so delivering 11 before 10 loses 10 for good
+        with self.ledger.lock:
+            event_id, row_id, created_at = self.ledger._insert_event(run_id, kind, clean)
+            if self.enabled:
+                self._fanout(run_id, {"id": row_id, "event_id": event_id, "kind": kind,
+                                      "payload": clean, "t": created_at})
         return event_id, row_id
 
     def _fanout(self, run_id: str, frame: dict) -> None:

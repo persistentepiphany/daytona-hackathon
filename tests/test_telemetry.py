@@ -5,6 +5,7 @@ import queue
 import re
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +32,7 @@ CREDENTIAL_SWEEP = re.compile(
 def ledger(tmp_path):
     led = Ledger(tmp_path / "ledger.db")
     led.create_run(RUN, paper_hash="p" * 64, prereg_hash="h" * 64)
+    led.bus.enabled = True  # the feed is opt-in; these tests are the opting in
     return led
 
 
@@ -239,3 +241,69 @@ def test_display_tails_are_capped_inside_emit(ledger):
     assert len(observation["tail"]) <= telemetry.ActionTap.TAIL_LIMIT
     # the full diff is an artifact, referenced rather than carried
     assert patch["evidence_path"] is None or patch["evidence_path"].startswith("_patches/")
+
+
+# --- the credential shapes this repository actually uses -------------------
+
+REAL_SHAPES = [
+    # every one of these is an environment variable this project reads. A rule that
+    # only matched an unprefixed `api_key=` missed all of them.
+    "export PARALLEL_API_KEY=g7qTtPabcdef123456",
+    "export ANTHROPIC_API_KEY=sk-ant-api03-NOTAREALKEY000000",
+    "DAYTONA_API_KEY=dtn_abcdef1234567890",
+    "ZAI_API=6a21d5abcdef123456",
+    "Authorization: Bearer abcdef1234567890",
+    "api_key=abcdef123456",
+    "access_token: abcdef123456",
+    "password=hunter2hunter2",
+]
+
+MUST_SURVIVE = [
+    # load-bearing in every manifest the ledger replays from: mangling either of these
+    # would break reconstruct_attempt and validate_manifest
+    "mutation config_key=data.shuffle_labels",
+    "--set models.C2.params.n_estimators=10",
+    "venv/bin/pip install -q --no-cache-dir numpy scikit-learn",
+    "bash runner.sh E001",
+    "printf '...' | sha256sum -c --strict --quiet -",
+]
+
+
+@pytest.mark.parametrize("line", REAL_SHAPES)
+def test_real_credential_shapes_are_redacted(line):
+    out = telemetry.redact({"tail": line})["tail"]
+    assert telemetry.REDACTED in out, line
+    assert not CREDENTIAL_SWEEP.search(out), out
+
+
+@pytest.mark.parametrize("line", MUST_SURVIVE)
+def test_payloads_the_pipeline_reads_back_survive_verbatim(line):
+    assert telemetry.redact({"cmd": line})["cmd"] == line
+
+
+def test_redaction_is_idempotent():
+    """Events are redacted once on the way in; re-running the rule over a stored
+    payload must not cascade into the marker itself."""
+    once = telemetry.redact({"t": REAL_SHAPES[0]})
+    assert telemetry.redact(once) == once
+
+
+def test_real_manifests_are_untouched():
+    """The strongest form of the previous assertion: every manifest derivable from a
+    preregistration committed in this repo, through the redactor, unchanged."""
+    import glob
+
+    from repro.orchestrator.manifest import build_manifest
+    from repro.orchestrator.prereg import sha256_of
+
+    checked = 0
+    for path in glob.glob("results/**/prereg*.json", recursive=True):
+        doc = json.loads(Path(path).read_text())
+        if not doc.get("experiments"):
+            continue
+        doc_hash = sha256_of(doc)
+        for entry in doc["experiments"]:
+            manifest = build_manifest(doc, doc_hash, entry["experiment_id"])
+            assert telemetry.redact(manifest) == manifest, f"{path}:{entry['experiment_id']}"
+            checked += 1
+    assert checked, "no committed preregistrations found to check against"

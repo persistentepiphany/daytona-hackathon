@@ -87,6 +87,7 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(run_dir / "ledger.db")
     ledger.create_run(run_id, paper_hash="0" * 64, prereg_hash="0" * 64)
+    ledger.bus.enabled = True  # the feed is opt-in; this driver exists to show it
     gates = Gates(ledger)
     gates.approve(run_id, "G1", "microrun")
     adapter = DaytonaAdapter()

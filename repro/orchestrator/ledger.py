@@ -107,10 +107,12 @@ class Ledger:
         self.lock = threading.RLock()  # one connection, serialized writes
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        # WAL lets the live feed read while a run writes; the busy timeout absorbs the
-        # brief contention when several worker threads finalize attempts at once
-        self.db.execute("PRAGMA journal_mode=WAL")
+        # order matters: converting an existing rollback-journal database to WAL takes
+        # an exclusive lock, so the timeout has to be in place first or opening a ledger
+        # that anything else holds (the dashboard mid-query, say) raises outright
         self.db.execute("PRAGMA busy_timeout=5000")
+        # WAL lets the live feed read while a run writes
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         self.db.commit()
         self.bus = _Bus(self)  # every event row goes through it, redaction included
@@ -194,8 +196,10 @@ class Ledger:
                                  exit=exit_code)
 
     def _emit_attempt_state(self, attempt_id: str, state: str, **extra) -> None:
-        row = self.db.execute("SELECT run_id, exp_id FROM attempts WHERE attempt_id=?",
-                              (attempt_id,)).fetchone()
+        with self.lock:  # every caller happens to hold it already; do not rely on that
+            row = self.db.execute(
+                "SELECT run_id, exp_id FROM attempts WHERE attempt_id=?",
+                (attempt_id,)).fetchone()
         if row is None:
             return
         self.bus.emit(row["run_id"], "attempt.state",

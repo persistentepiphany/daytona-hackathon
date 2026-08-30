@@ -75,6 +75,7 @@ def drain(port, count, query="", timeout=25.0, headers=None):
 @pytest.fixture
 def served(tmp_path, request):
     ledger = seeded_ledger(tmp_path, request.param)
+    ledger.bus.enabled = True
     server = feed.make_server(str(tmp_path / "ledger.db"), str(tmp_path), port=0,
                               bus=ledger.bus, default_run=RUN)
     threading.Thread(target=server.serve_forever, daemon=True).start()
