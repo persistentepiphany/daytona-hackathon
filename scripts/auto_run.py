@@ -6,8 +6,10 @@ and the environment plus the candidate implementation come from the Implementer
 rather than `cal.build_environment`. Everything downstream - the P2 executor, the
 P3 grader, the controls - is the existing machinery, untouched.
 
-Usage: python scripts/auto_run.py [paper_dir] [--seeds 17,41,93]
+Usage: python scripts/auto_run.py [paper_dir] [--seeds 17,41,93] [--run-id auto-…]
 """
+
+from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
@@ -15,6 +17,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -42,26 +45,31 @@ RUN_ROOT = Path("runs/auto")
 TTL_MIN = 20
 BUDGET = {"sandbox_minutes": 1500, "parallel_calls": 6}
 
+LogFn = Callable[[str], None]
 
-def log(msg):
+
+def _default_log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("paper_dir", nargs="?", default="papers/fashion-mnist")
-    ap.add_argument("--seeds", default="17,41,93")
-    args = ap.parse_args()
+def run_auto(
+    paper_dir: str | Path,
+    seeds: list[int] | None = None,
+    run_id: str | None = None,
+    log: LogFn | None = None,
+) -> int:
+    """Run the autonomous pipeline. Returns the CLI exit code (0/2/3)."""
+    log = log or _default_log
+    seeds = list(seeds or [17, 41, 93])
+    paper_dir = Path(paper_dir)
+    paper = json.loads((paper_dir / "paper.json").read_text())
+    paper_text = (paper_dir / "paper-extract.txt").read_text()
 
     secrets = [s for s in (env_key("ZAI_API_KEY", "ZAI_API"),
                            env_key("DAYTONA_API_KEY", "DAYTONA_API"),
                            env_key("PARALLEL_API_KEY", "PARALLEL_API")) if s]
-    seeds = [int(s) for s in args.seeds.split(",")]
-    paper_dir = Path(args.paper_dir)
-    paper = json.loads((paper_dir / "paper.json").read_text())
-    paper_text = (paper_dir / "paper-extract.txt").read_text()
 
-    run_id = f"auto-{int(time.time())}"
+    run_id = run_id or f"auto-{int(time.time())}"
     run_dir = RUN_ROOT / run_id
     (run_dir / "evidence").mkdir(parents=True, exist_ok=True)
     ledger = Ledger(RUN_ROOT / "ledger.db")
@@ -183,7 +191,7 @@ def main() -> int:
         log(f"P3 {r['experiment_id']} {r['claim_id']} observed={r['observed']} -> {r['verdict']}")
 
     report = generate_report(run_id, doc, rows, [], verdicts["hermeticity"], ledger,
-                             paper.get("title", args.paper_dir), code_absence=certificate)
+                             paper.get("title", str(paper_dir)), code_absence=certificate)
     (run_dir / "report.md").write_text(report)
     handle = {"run_id": run_id, "run_dir": str(run_dir), "s0_snapshot": s0,
               "prereg_hash": prereg_hash, "autonomous": True,
@@ -191,6 +199,16 @@ def main() -> int:
     (RUN_ROOT / "latest.json").write_text(json.dumps(handle, indent=2))
     log(f"done: {run_dir}")
     return 0 if rows else 3
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("paper_dir", nargs="?", default="papers/fashion-mnist")
+    ap.add_argument("--seeds", default="17,41,93")
+    ap.add_argument("--run-id", default=None)
+    args = ap.parse_args()
+    seeds = [int(s) for s in args.seeds.split(",")]
+    return run_auto(args.paper_dir, seeds=seeds, run_id=args.run_id)
 
 
 if __name__ == "__main__":
