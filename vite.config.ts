@@ -132,11 +132,26 @@ function vitePluginManusDebugCollector(): Plugin {
         }
 
         let body = "";
-        req.on("data", (chunk) => {
+        const maxBodyBytes = 1_000_000;
+        let bodyBytes = 0;
+        let tooLarge = false;
+
+        req.on("data", (chunk: Buffer | string) => {
+          if (tooLarge) return;
+          const size = typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+          bodyBytes += size;
+          if (bodyBytes > maxBodyBytes) {
+            tooLarge = true;
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "Payload too large" }));
+            req.destroy();
+            return;
+          }
           body += chunk.toString();
         });
 
         req.on("end", () => {
+          if (tooLarge) return;
           try {
             const payload = JSON.parse(body);
             handlePayload(payload);
