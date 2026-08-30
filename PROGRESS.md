@@ -309,3 +309,41 @@ change telling the role that searching is available.
 
 Every round's proposed source is committed under
 `results/auto/auto-1788101831/candidate/round{1..4}/`.
+
+## Degraded mode: carry through when data cannot be fetched
+
+Added so a run that cannot reach its data still ends with executable code and a
+record, rather than dying at the build gate.
+
+1. `build.py` passes the Parallel client to `apply_proposal`. Necessary but not
+   sufficient: the Implementer's own prompt offers only `commands` and `files`,
+   and `to_actions` never emits a `search` action, so the wired client is still
+   unreachable by the role. Extending the role's contract is the remaining work.
+2. After the four normal rounds, one degraded round tells the Implementer to
+   generate data from the claim's condition instead of downloading it.
+3. A degraded run's rows are relabelled `NOT COMPARABLE - synthetic data
+   substitute`, keeping the engine's grading under `graded_verdict_withheld`.
+   Numbers measured against generated data are not a reproduction.
+4. A run that never passes the gate now still writes `verdicts.json` (all
+   NOT ATTEMPTABLE) and `report.md`, so the candidate source always ships with a
+   record of what happened.
+
+### Evidence
+
+`auto-1788102379` proved the mechanism: rounds 1–4 failed on the unreachable UCI
+host, the degraded round passed the smoke gate, S₀ froze, and both experiments
+executed at mean 0.433333. It then died in P3 on a separate defect.
+
+`auto-1788104282-24d415` is the committed deliverable: rounds 1–4 failed on the
+same host, the degraded round produced code whose own smoke check failed on a
+malformed `config.json`, and the run still wrote a prereg, a report, two
+NOT ATTEMPTABLE verdicts and all five rounds of source under `candidate/`.
+
+### The planner-output fragility this exposed
+
+Four consecutive runs crashed in `p3_verdict` on four variants of one problem:
+a rule with a string target, a rule with no target, a rule with no tolerance,
+and the word `"mean"` in a numeric field. Every crash landed after the
+experiments had run. `_complete_rule` now reads each number defensively and
+refuses to freeze an ungradeable prereg, so a malformed rule costs seconds
+rather than a whole run. This is the most likely thing to break on a new paper.

@@ -1,0 +1,106 @@
+{
+  "run_id": "auto-1788104282-24d415",
+  "prereg_hash": "9dd52f71f29a7ead1f5d5b002c4f9ecc57f2a195573779e6cca84e380b31c144",
+  "verdicts": [
+    {
+      "experiment_id": "e_reproduce_monks",
+      "claim_id": "c_brf_monks",
+      "rule_id": "r_tol_monks",
+      "type": "reproduce",
+      "observed": null,
+      "delta": null,
+      "verdict": "NOT ATTEMPTABLE",
+      "held_out": false,
+      "attempt_ids": []
+    },
+    {
+      "experiment_id": "e_reproduce_bcw",
+      "claim_id": "c_brf_bcw",
+      "rule_id": "r_tol_bcw",
+      "type": "reproduce",
+      "observed": null,
+      "delta": null,
+      "verdict": "NOT ATTEMPTABLE",
+      "held_out": false,
+      "attempt_ids": []
+    }
+  ],
+  "sham": [],
+  "hermeticity": "NOT RUN - build never passed the smoke gate",
+  "framing": "failure to reproduce is evidence the paper as written is insufficient to reconstruct the result - not evidence the authors are wrong",
+  "build": {
+    "ok": false,
+    "iterations": 5,
+    "attempts": [
+      {
+        "iteration": 1,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 10,
+        "stage": "apply_or_smoke",
+        "error": "command failed (4): cd localdata && wget -q https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train\n"
+      },
+      {
+        "iteration": 2,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 7,
+        "stage": "apply_or_smoke",
+        "error": "command failed (4): wget -q -O localdata/monks-2.train https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train\n"
+      },
+      {
+        "iteration": 3,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 13,
+        "stage": "apply_or_smoke",
+        "error": "command failed (4): wget -q -O localdata/monks-2.train https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train\n"
+      },
+      {
+        "iteration": 4,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 11,
+        "stage": "apply_or_smoke",
+        "error": "command failed (4): wget -q -O localdata/monks-2.train https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train\n"
+      },
+      {
+        "iteration": 5,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 3,
+        "stage": "apply_or_smoke",
+        "error": "smoke gate failed:\nTraceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    cfg = json.load(f)\n  File \"/usr/local/lib/python3.14/json/__init__.py\", line 298, in load\n    return loads(fp.read(),\n        cls=cls, object_hook=object_hook,\n        parse_float=parse_float, parse_int=parse_int,\n        parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)\n  File \"/usr/local/lib/python3.14/json/__init__.py\", line 352, in loads\n    return _default_decoder.decode(s)\n           ~~~~~~~~~~~~~~~~~~~~~~~^^^\n  File \"/usr/local/lib/python3.14/json/decoder.py\", line 345, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.14/json/decoder.py\", line 363, in raw_decode\n    raise JSONDecodeError(\"Expecting value\", s, err.value) from None\njson.decoder.JSONDecodeError: Expecting value: line 13 column 28 (char 257)\n"
+      }
+    ],
+    "degraded": false,
+    "last_feedback": [
+      {
+        "claim_id": "*",
+        "direction": "match",
+        "magnitude_bucket": "smoke_failure",
+        "detail": "hon3.14/json/__init__.py\", line 298, in load\n    return loads(fp.read(),\n        cls=cls, object_hook=object_hook,\n        parse_float=parse_float, parse_int=parse_int,\n        parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)\n  File \"/usr/local/lib/python3.14/json/__init__.py\", line 352, in loads\n    return _default_decoder.decode(s)\n           ~~~~~~~~~~~~~~~~~~~~~~~^^^\n  File \"/usr/local/lib/python3.14/json/decoder.py\", line 345, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.14/json/decoder.py\", line 363, in raw_decode\n    raise JSONDecodeError(\"Expecting value\", s, err.value) from None\njson.decoder.JSONDecodeError: Expecting value: line 13 column 28 (char 257)\n"
+      }
+    ]
+  }
+}
