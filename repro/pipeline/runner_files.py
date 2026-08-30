@@ -28,7 +28,7 @@ def _progress(done, total):
         return
     try:
         with open(PROGRESS, "a") as f:
-            f.write(f"::progress {done}/{total}\n")
+            f.write(f"::progress {done}/{total}\\n")
     except OSError:
         pass  # a watcher's convenience must never interrupt an experiment
 
