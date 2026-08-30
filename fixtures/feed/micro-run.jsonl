@@ -1,0 +1,18 @@
+{"id": 55, "kind": "gate_approved", "payload": {"approver": "microrun", "gate": "G1"}, "t": 1788100417.591807}
+{"id": 56, "kind": "gate.changed", "payload": {"approver": "microrun", "gate": "G1", "state": "approved"}, "t": 1788100417.592332}
+{"id": 57, "kind": "budget.tick", "payload": {"ceiling": 200, "kind": "sandbox_minutes", "spent": 10.0}, "t": 1788100419.8872576}
+{"id": 58, "kind": "sandbox_created", "payload": {"exp_id": null, "kind": "experiment", "name": "micro-micro-1788100417", "network_block_all": false, "parent_id": null, "sandbox_id": "fe657deb-4c56-4c51-8178-892eb5db38b7", "snapshot": "daytona-small", "ttl_minutes": 10}, "t": 1788100421.4145443}
+{"id": 59, "kind": "attempt.state", "payload": {"attempt_id": "att-87008bec1538", "claim_id": null, "exp_id": "MICRO", "seeds": 4, "state": "queued", "ttl_min": 10}, "t": 1788100423.3147202}
+{"id": 60, "kind": "attempt.state", "payload": {"attempt_id": "att-87008bec1538", "exp_id": "MICRO", "sandbox_id": "fe657deb-4c56-4c51-8178-892eb5db38b7", "state": "running"}, "t": 1788100423.3160553}
+{"id": 61, "kind": "log.chunk", "payload": {"attempt_id": "att-87008bec1538", "stream": "stdout", "text": "tail: cannot open '/home/daytona/work/stdout.log' for reading: No such file or directory\ntail: '/home/daytona/work/stdout.log' has appeared;  following new file\n[runner] MICRO seed=1 emitted=1788100424.381071516\n"}, "t": 1788100424.87047}
+{"id": 62, "kind": "attempt.progress", "payload": {"attempt_id": "att-87008bec1538", "basis": "measured_seed_rate", "done": 1, "elapsed_s": 10.8, "eta_s": 32.4, "total": 4}, "t": 1788100434.2628245}
+{"id": 63, "kind": "log.chunk", "payload": {"attempt_id": "att-87008bec1538", "stream": "stdout", "text": "[runner] MICRO seed=1 done emitted=1788100434.382879577\n[runner] MICRO seed=2 emitted=1788100434.385543128\n"}, "t": 1788100434.604926}
+{"id": 64, "kind": "attempt.progress", "payload": {"attempt_id": "att-87008bec1538", "basis": "measured_seed_rate", "done": 2, "elapsed_s": 20.8, "eta_s": 20.8, "total": 4}, "t": 1788100444.2603006}
+{"id": 65, "kind": "log.chunk", "payload": {"attempt_id": "att-87008bec1538", "stream": "stdout", "text": "[runner] MICRO seed=2 done emitted=1788100444.387461219\n[runner] MICRO seed=3 emitted=1788100444.389193952\n"}, "t": 1788100444.6277723}
+{"id": 66, "kind": "attempt.progress", "payload": {"attempt_id": "att-87008bec1538", "basis": "measured_seed_rate", "done": 3, "elapsed_s": 30.8, "eta_s": 10.3, "total": 4}, "t": 1788100454.25083}
+{"id": 67, "kind": "log.chunk", "payload": {"attempt_id": "att-87008bec1538", "stream": "stdout", "text": "[runner] MICRO seed=3 done emitted=1788100454.391130953\n[runner] MICRO seed=4 emitted=1788100454.393150590\n"}, "t": 1788100454.650673}
+{"id": 68, "kind": "attempt.progress", "payload": {"attempt_id": "att-87008bec1538", "basis": "measured_seed_rate", "done": 4, "elapsed_s": 40.8, "eta_s": 0.0, "total": 4}, "t": 1788100464.2611318}
+{"id": 69, "kind": "log.chunk", "payload": {"attempt_id": "att-87008bec1538", "stream": "stdout", "text": "[runner] MICRO seed=4 done emitted=1788100464.395140605\n[runner] MICRO done emitted=1788100464.397940624\n"}, "t": 1788100464.6726432}
+{"id": 70, "kind": "attempt.state", "payload": {"attempt_id": "att-87008bec1538", "exit": 0, "exp_id": "MICRO", "state": "done"}, "t": 1788100466.0810716}
+{"id": 71, "kind": "kill_switch", "payload": {"deleted": ["fe657deb-4c56-4c51-8178-892eb5db38b7"]}, "t": 1788100467.3892314}
+{"id": 72, "kind": "run.done", "payload": {}, "t": 1788100467.39014}

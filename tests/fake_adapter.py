@@ -17,6 +17,7 @@ class FakeAdapter:
 
     def __init__(self):
         self._seq = itertools.count(1)
+        self._cmd_seq = itertools.count(1)
         self.sandboxes: dict[str, dict] = {}  # id -> {spec/labels/state/parent}
         self.snapshots: set[str] = {"base"}
         self.volumes: dict[str, str] = {}
@@ -26,6 +27,9 @@ class FakeAdapter:
         self.deleted_order: list[str] = []
         self.calls: list[tuple[str, tuple]] = []
         self.sessions: dict[tuple[str, str], list[str]] = {}
+        self.async_cmds: dict[str, str] = {}
+        self.stream_script: dict[str, list[str]] = {}
+        self.cancelled: list[str] = []
 
     def _rec(self, name: str, *args) -> None:
         self.calls.append((name, args))
@@ -75,6 +79,30 @@ class FakeAdapter:
         self._rec("execute_session_command", sandbox_id, session_id, cmd)
         self.sessions[(sandbox_id, session_id)].append(cmd)
         return self.exec(sandbox_id, cmd)
+
+    # --- async session commands: the live feed's log tap -------------------
+    # stream_script maps a tailed path fragment to the chunks its follower yields, so
+    # coalescer and tap tests are deterministic and need no sandbox.
+    def exec_async(self, sandbox_id: str, cmd: str, cwd=None, env=None):
+        from repro.orchestrator.adapter import AsyncCmd
+
+        self._rec("exec_async", sandbox_id, cmd)
+        cmd_id = f"cmd-{next(self._cmd_seq)}"
+        self.async_cmds[cmd_id] = cmd
+        return AsyncCmd(sandbox_id=sandbox_id, session_id=f"sess-{cmd_id}", cmd_id=cmd_id)
+
+    def follow_logs(self, handle, on_stdout, on_stderr=None) -> None:
+        self._rec("follow_logs", handle.sandbox_id, handle.cmd_id)
+        cmd = self.async_cmds.get(handle.cmd_id, "")
+        for key, chunks in self.stream_script.items():
+            if key in cmd:
+                for chunk in chunks:
+                    on_stdout(chunk)
+                return
+
+    def cancel_async(self, handle) -> None:
+        self._rec("cancel_async", handle.sandbox_id, handle.cmd_id)
+        self.cancelled.append(handle.cmd_id)
 
     def create_snapshot(self, sandbox_id: str, name: str) -> None:
         self._rec("create_snapshot", sandbox_id, name)

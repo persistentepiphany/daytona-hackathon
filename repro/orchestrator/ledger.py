@@ -15,6 +15,12 @@ import uuid
 from pathlib import Path
 
 
+def _Bus(ledger):
+    from ..telemetry import Bus
+
+    return Bus(ledger)
+
+
 def _locked(fn):
     @functools.wraps(fn)
     def wrapper(self, *args, **kwargs):
@@ -80,6 +86,7 @@ CREATE TABLE IF NOT EXISTS gates (
     approved_at REAL NOT NULL,
     UNIQUE (run_id, gate)
 );
+CREATE INDEX IF NOT EXISTS idx_events_run ON events (run_id);
 CREATE TABLE IF NOT EXISTS budget_charges (
     run_id     TEXT NOT NULL,
     kind       TEXT NOT NULL,
@@ -100,8 +107,15 @@ class Ledger:
         self.lock = threading.RLock()  # one connection, serialized writes
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        # order matters: converting an existing rollback-journal database to WAL takes
+        # an exclusive lock, so the timeout has to be in place first or opening a ledger
+        # that anything else holds (the dashboard mid-query, say) raises outright
+        self.db.execute("PRAGMA busy_timeout=5000")
+        # WAL lets the live feed read while a run writes
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         self.db.commit()
+        self.bus = _Bus(self)  # every event row goes through it, redaction included
 
     # runs ----------------------------------------------------------------
     @_locked
@@ -152,6 +166,10 @@ class Ledger:
              sandbox_id, cmd, json.dumps(seeds), time.time(), cost_est),
         )
         self.db.commit()
+        self.bus.emit(run_id, "attempt.state", {
+            "attempt_id": attempt_id, "state": "queued", "exp_id": exp_id,
+            "claim_id": claim_id, "seeds": len(seeds), "ttl_min": cost_est,
+        })
         return attempt_id
 
     @_locked
@@ -163,6 +181,7 @@ class Ledger:
         if cur.rowcount != 1:
             raise LedgerError(f"attempt {attempt_id} missing or sandbox already bound")
         self.db.commit()
+        self._emit_attempt_state(attempt_id, "running", sandbox_id=sandbox_id)
 
     @_locked
     def finish_attempt(self, attempt_id: str, exit_code: int, evidence_sha: str | None) -> None:
@@ -173,6 +192,19 @@ class Ledger:
         if cur.rowcount != 1:
             raise LedgerError(f"attempt {attempt_id} missing or already finalized")
         self.db.commit()
+        self._emit_attempt_state(attempt_id, "done" if exit_code == 0 else "failed",
+                                 exit=exit_code)
+
+    def _emit_attempt_state(self, attempt_id: str, state: str, **extra) -> None:
+        with self.lock:  # every caller happens to hold it already; do not rely on that
+            row = self.db.execute(
+                "SELECT run_id, exp_id FROM attempts WHERE attempt_id=?",
+                (attempt_id,)).fetchone()
+        if row is None:
+            return
+        self.bus.emit(row["run_id"], "attempt.state",
+                      {"attempt_id": attempt_id, "state": state,
+                       "exp_id": row["exp_id"], **extra})
 
     @_locked
     def attempt(self, attempt_id: str) -> sqlite3.Row | None:
@@ -221,15 +253,30 @@ class Ledger:
         return {r["path"]: r["sha256"] for r in rows}
 
     # events --------------------------------------------------------------
-    @_locked
     def log_event(self, run_id: str, kind: str, payload: dict) -> str:
+        event_id, _ = self.bus.emit(run_id, kind, payload, _legacy=True)
+        return event_id
+
+    @_locked
+    def _insert_event(self, run_id: str, kind: str, payload: dict) -> tuple[str, int, float]:
+        """The only INSERT into events. Called by the bus, which has already redacted
+        the payload; nothing else may write this table."""
         event_id = f"evt-{uuid.uuid4().hex[:12]}"
-        self.db.execute(
+        created_at = time.time()
+        cur = self.db.execute(
             "INSERT INTO events (event_id, run_id, kind, payload, created_at) VALUES (?,?,?,?,?)",
-            (event_id, run_id, kind, json.dumps(payload, sort_keys=True), time.time()),
+            (event_id, run_id, kind, json.dumps(payload, sort_keys=True), created_at),
         )
         self.db.commit()
-        return event_id
+        return event_id, cur.lastrowid, created_at
+
+    @_locked
+    def events_after(self, run_id: str, after: int = 0, limit: int = 5000) -> list[sqlite3.Row]:
+        """Catch-up feed: rowid is the monotonic cursor the SSE `id:` field carries."""
+        return self.db.execute(
+            "SELECT rowid AS id, event_id, kind, payload, created_at FROM events"
+            " WHERE run_id=? AND rowid>? ORDER BY rowid LIMIT ?", (run_id, after, limit)
+        ).fetchall()
 
     @_locked
     def events_for(self, run_id: str, kind: str | None = None) -> list[sqlite3.Row]:

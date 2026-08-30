@@ -20,6 +20,16 @@ DEFAULTS = {
         "per_stage_caps": {"intake": 3, "archaeology": 10},
     },
     "mc_tolerance_k": 3.0,
+    # the live feed, opt-in. REPRO_TELEMETRY=1 turns it on for a run; this key is the
+    # default when the variable is unset. Off means no feed events, no sandbox log tap
+    # and no extra provider calls, so a run behaves exactly as it did before the feed
+    # existed.
+    "telemetry": {
+        "enabled": False,
+        "port": 8700,
+        "pool_width": 2,          # concurrent experiment sandboxes; the org memory quota
+        "default_attempt_seconds": 900,
+    },
 }
 
 
@@ -38,3 +48,20 @@ def load_policy(path: str | Path | None = None) -> dict:
 def parallel_stages(policy: dict) -> tuple[str, ...]:
     p = policy["parallel"]
     return tuple(p["enabled_stages"]) if p.get("enabled") else ()
+
+
+def telemetry_enabled(policy: dict | None = None) -> bool:
+    """The single answer to "is the feed on?".
+
+    The environment has the last word so a run can opt in without editing a file;
+    otherwise the policy decides, defaulting to off. `telemetry.Bus` calls this rather
+    than reading the variable itself, so the key here cannot drift out of use.
+    """
+    from ..env import env_key
+
+    flag = env_key("REPRO_TELEMETRY")
+    if flag is not None:
+        return flag.strip().lower() in ("1", "true", "on", "yes")
+    if policy is None:
+        policy = DEFAULTS
+    return bool(policy.get("telemetry", {}).get("enabled", False))
