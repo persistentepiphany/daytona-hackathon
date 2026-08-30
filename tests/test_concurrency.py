@@ -195,3 +195,32 @@ def test_every_sandbox_create_goes_through_the_retry():
             if bare.search(line):
                 offenders.append(f"{path.relative_to(root)}:{n}")
     assert not offenders, "bare lifecycle.create() calls: " + ", ".join(offenders)
+
+
+def test_kill_stray_treats_a_run_still_writing_as_live(tmp_path):
+    """The sweep deleted a live archaeology box mid-build once; a run that is
+    still writing to its ledger must read as in flight, not as leftover."""
+    import importlib.util
+    import time as _time
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "kill_stray", Path(__file__).resolve().parent.parent / "scripts" / "kill_stray.py")
+    kill_stray = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(kill_stray)
+
+    path = tmp_path / "ledger.db"
+    led = Ledger(path)
+    for rid in ("run-live", "run-old"):
+        led.create_run(rid, paper_hash="p" * 64, prereg_hash="h" * 64)
+    led.log_event("run-live", "archaeology_cmd", {"cmd": "pip install"})
+    led.log_event("run-old", "archaeology_cmd", {"cmd": "pip install"})
+    # backdate one run past the idle window
+    led.db.execute("UPDATE events SET created_at=? WHERE run_id='run-old'",
+                   (_time.time() - 3600,))
+    led.db.commit()
+
+    live = kill_stray.live_runs(15.0, [str(path)])
+    assert set(live) == {"run-live"}
+    assert kill_stray.live_runs(0, [str(path)]) == {}  # opt out sweeps on labels alone
+    assert kill_stray.live_runs(15.0, [str(tmp_path / "missing.db")]) == {}
