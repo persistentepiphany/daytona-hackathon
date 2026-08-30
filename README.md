@@ -2,60 +2,79 @@
 
 A paper's claims become preregistered executable counterfactuals; each runs from the same frozen state with independent lineage on Daytona; the evidence — not the paper's authority — decides the verdict and what gets built.
 
-## 1. How it works
+## 1. How the pipeline works
 
-1. **P0 Intake** — the Planner reads the paper PDF and emits a claims table, an ambiguity ledger, and a proposed experiment set drawn from a fixed menu (`reproduce, ablation, stronger_baseline, randomized_control, seed_sweep`), plus a code-absence certification via Parallel Search.
-2. **G1 Approve & Freeze** — one user action. The orchestrator selects held-out claims, fixes tolerances, writes `prereg.json`, and commits its sha256 hash as commit #1 of the output repo. Nothing downstream may alter it.
-3. **P1 Environment archaeology** — the Implementer iterates inside a Daytona VM, appending every action to `/work/RECIPE.sh`. A smoke gate (imports, data loader, one forward pass) must pass, then the VM is frozen as snapshot **S₀**.
-4. **P2 Experiments** — one sandbox per scientific question, created directly from S₀, seeds looping inside the sandbox. Standing controls run in the same queue: a calibration paper (expected REPRODUCED), a sham twin with corrupted claims (expected NOT REPRODUCED), and a hermeticity run with networking blocked.
-5. **P3 Verdict** — a sealed Verifier compares evidence to the preregistration only. Verdicts: `REPRODUCED WITHIN TOLERANCE / REPRODUCED OUTSIDE PREREGISTERED TOLERANCE / NOT REPRODUCED / UNDER-CONSTRAINED / NOT ATTEMPTABLE / INCONCLUSIVE`.
-6. **P4 Adaptive round (optional)** — at most one, from the same menu, under a new prereg document requiring approval; it cannot alter primary verdicts.
-7. **P5 Thin build + G3** — the Builder sees only the validated-knowledge brief and ships one API endpoint plus one static page from a container sandbox, exposed via a preview URL. G3 = user approves the push.
+1. **P0 Intake** — the Planner reads the paper PDF and emits a claims table, an ambiguity ledger (each entry mapped to a config key), and a proposed experiment set drawn from a fixed menu: `reproduce, ablation, stronger_baseline, randomized_control, seed_sweep`. A code-absence certification via Parallel Search records whether any official implementation exists.
+2. **G1 Approve & Freeze** — one user action. The orchestrator selects held-out claims (stored in an orchestrator-side annex no agent ever sees), fixes tolerances, writes `prereg.json`, and records its sha256. Nothing downstream may alter it.
+3. **P1 Environment archaeology** — the environment is built statefully inside a Daytona sandbox, with every action appended to `RECIPE.sh`, so S₀ ships as both a binary snapshot and a human-readable recipe. A smoke gate (imports, data loader, one fit+predict) must pass; then the sandbox is frozen with `create_snapshot` and a fresh boot from the frozen snapshot must pass the same smoke gate before the archaeology box is deleted.
+4. **P2 Experiments** — one sandbox per scientific question, created directly from S₀, seeds looping inside the sandbox. Each run re-verifies dataset checksums against the ledger before compute. Standing controls ride the same queue: a sham twin judged against deterministically corrupted targets (expected NOT REPRODUCED) and a hermeticity run with `network_block_all=True` (expected to complete offline).
+5. **P3 Verdict** — a deterministic engine compares evidence to the frozen preregistration; the sealed Verifier role re-derives verdicts from prereg + evidence only and any disagreement is itself a finding. Vocabulary: `REPRODUCED WITHIN TOLERANCE / REPRODUCED OUTSIDE PREREGISTERED TOLERANCE / NOT REPRODUCED / UNDER-CONSTRAINED / NOT ATTEMPTABLE / INCONCLUSIVE`, plus `CONTROL PASS / CONTROL FAIL` for ablations and randomized controls. Held-out claims are scored only here.
+6. **P4 Adaptive round (optional)** — at most one, from the same menu, under a prereg-002 document that requires its own approval; rows are labeled ADAPTIVE and cannot alter primary verdicts.
+7. **P5 Thin build + G3** — build what survived, not what was claimed: one API endpoint plus one static page in a container sandbox, exposed via a preview link (with a signed URL for sharing). A deterministic fallback builder renders the verdict table with no LLM involved.
 
 ## 2. Invariants
 
-1. **S₀ is immutable.** After freeze, nothing modifies the canonical snapshot; all work happens in sandboxes created from it.
-2. **No sandbox spend before Gate 1.**
-3. **Every experiment manifest references the prereg hash** and is rejected deterministically on any mismatch.
-4. **The Verifier is sealed** — it sees prereg + evidence only.
-5. **Every attempt is replayable from the ledger**: `S₀ + manifest + dataset hashes` reconstructs any run.
-6. **The web exists only upstream of the freeze.** From S₀ onward the system is closed.
+1. **S₀ is immutable.** The ledger enforces a single freeze per run; all work happens in sandboxes created from the snapshot.
+2. **No sandbox spend before Gate 1.** The lifecycle refuses creation until G1 is approved; GPU classes additionally require G2.
+3. **Every manifest is derivable from the frozen preregistration.** The gate is deterministic: wrong hash, claim, type, mutation, seeds, or command → rejected.
+4. **The Verifier is sealed.** Its evidence bundle contains prereg, manifests, metrics, leakage and checksums — never source, logs, or history.
+5. **Every attempt is replayable from the ledger.** `repro replay --attempt <id>` resolves `S₀ + manifest hash + dataset hashes + command + seeds` with no agent memory involved.
+6. **The web exists only upstream of the freeze.** Experiment sandboxes never download; the hermeticity control proves the offline path; Parallel is capped, stage-gated, logged, and never load-bearing.
 
 ## 3. Repository layout
 
-1. `repro/orchestrator/` — deterministic core: ledger, gates, prereg hashing, manifest validation, sandbox lifecycle, budget, evidence collection. No LLM calls.
-2. `repro/roles/` — the four LLM roles (Planner, Implementer, Verifier, Builder). Agents propose; the orchestrator disposes.
-3. `repro/pipeline/` — the P0–P5 stage drivers.
-4. `repro/cli.py` — the `repro` command-line entry point.
-5. `scripts/day0_check.py` — the Day-0 empirical verification checklist, runnable against a live Daytona account.
-6. `schemas/` — JSON Schemas for claims, prereg, and experiment manifests.
-7. `tests/` — unit tests against a fake Daytona adapter; no network required.
+1. `repro/orchestrator/` — deterministic core: `ledger.py` (append-only SQLite: runs, attempts, verdicts, datasets, events, gates, budget), `gates.py` (G1/G2/G3/P4), `prereg.py` (freeze + held-out annex), `manifest.py` (deterministic gate), `lifecycle.py` (per-class policies, kill switch), `budget.py` (spend ceilings), `adapter.py` (provider interface), `daytona_client.py` (real adapter + proxy-aware SDK setup), `parallel_client.py` (capped search).
+2. `repro/pipeline/` — `p1_archaeology.py`, `staging.py`, `p2_experiments.py`, `runner_files.py`, `p3_verdict.py`, `p4_adaptive.py`, `p5_build.py`, `report.py`.
+3. `repro/roles/` — Planner, Implementer, Verifier, Builder over a provider interface; all proposals pass deterministic validation; discrepancy feedback carries direction + magnitude bucket, never raw values.
+4. `repro/calibration/fashion_mnist.py` — the hand-written recipe and candidate code proving the loop before any LLM writes code.
+5. `papers/fashion-mnist/` — calibration paper metadata, transcribed claims, ambiguity ledger.
+6. `scripts/` — `day0_check.py` (live account verification), `run_calibration_p1.py` (prereg → G1 → stage → archaeology → freeze → boot-verify), `run_calibration_p2.py` (experiments + sham + hermeticity → verdicts).
+7. `tests/` — 22 unit tests against an in-memory fake adapter; no network needed.
 
-## 4. Setup
+## 4. Setup and usage
 
-1. Python 3.11+.
-2. `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'`
-3. Environment variables: `DAYTONA_API_KEY` (or `DAYTONA_API`), `PARALLEL_API_KEY` (or `PARALLEL_API`), `ANTHROPIC_API_KEY` for the LLM roles.
-4. `.venv/bin/pytest` to run the unit tests.
-5. `.venv/bin/python scripts/day0_check.py` to run the live Day-0 verification (creates and deletes small labeled sandboxes; minimal spend).
+1. `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'` (Python 3.11+, `daytona==0.207.0` pinned).
+2. Environment variables: `DAYTONA_API_KEY` (or `DAYTONA_API`); `PARALLEL_API_KEY` (or `PARALLEL_API`) for the optional search; `ANTHROPIC_API_KEY` only when running the LLM roles.
+3. `.venv/bin/pytest` — unit suite.
+4. `.venv/bin/python scripts/day0_check.py` — live Day-0 verification (creates and deletes small labeled sandboxes; minimal spend).
+5. `.venv/bin/python scripts/run_calibration_p1.py` — freeze prereg, stage data, build and freeze S₀.
+6. `.venv/bin/python scripts/run_calibration_p2.py` — run the preregistered experiments, sham, hermeticity; print the verdict table.
+7. `repro kill --ledger runs/calibration/ledger.db --run-id <id>` — kill switch (delete by label, children first).
+8. `repro replay --ledger runs/calibration/ledger.db --attempt <att-id>` — replay resolution from the ledger.
+9. `repro report --run-dir runs/calibration/<run-id> --title "..."` — render the report from persisted artifacts.
+10. `repro build --run-dir runs/calibration/<run-id>` — deploy the what-survived page to a sandbox and print the preview URL.
 
 ## 5. Day-0 verification (live, against the event account)
 
-Run: `python scripts/day0_check.py`. Findings so far:
+1. `create_snapshot` is public API on SDK 0.207.0 and works live: container frozen in 24–36s, fresh sandbox booted from the frozen snapshot in ~4s, **filesystem state preserved across freeze-and-boot** (verified with a marker file in `$HOME`).
+2. The `linux-vm` class is unavailable on this account in both regions, so `fork()` is unavailable too (containers reject it: "Forking is not supported for this sandbox"). Spawn policy is create-from-S₀ only — which measured faster than VM forks would plausibly be anyway (0.5–1.7s creates).
+3. Auto-pause is VM/Windows-only; container lifecycles use auto-stop + auto-delete + TTL. `resize()` is not served for containers, so sandbox size is fixed at creation by choosing the base snapshot (`daytona-small` 1cpu/1GiB, `daytona-medium` 2/4, `daytona-large` 4/8).
+4. Volumes are created asynchronously (`pending_create` → `ready` in ~4s) and must be awaited before mounting; small-file write propagation between sandboxes measured at 0.9s. `VolumeMount` has no read-only flag, so dataset integrity is enforced by checksum re-verification before every run.
+5. `network_block_all=True` blocks everything, including package registries — so the hermeticity control is fully establishable on this account. Sandbox egress on the default tier is otherwise restricted to an allowlist (pypi, npm, github, huggingface reachable; UCI, Springer, arXiv reset) — dataset sourcing must fit that world or the org must be verified in the dashboard.
+6. GPU sandboxes must be ephemeral (`auto_delete_interval=0`); creation is blocked until the organization wallet holds GPU credits, so G2 stays dormant.
+7. Concurrency: at least 6 concurrent sandboxes with no quota error.
+8. Parallel Search round-trip verified (HTTP 200 with results).
+9. The generated SDK clients ignore proxy environment variables; `daytona_client.enable_proxy_env()` patches all three client packages to honor `HTTPS_PROXY`/`SSL_CERT_FILE` (a no-op elsewhere). Control plane is `app.daytona.io`; exec/file operations travel via `proxy.app-eu.daytona.io` / `proxy.app-us.daytona.io`, which restrictive networks must also allow.
+10. Sandboxes execute as user `daytona` (`$HOME=/home/daytona`), not root.
 
-1. `create_snapshot` is a public method on SDK 0.207.0 (the experimental name survives as an alias) and works live: a container was frozen in 29.2s and a new sandbox booted from the frozen snapshot in 3.6s with state preserved. The S₀ freeze-and-spawn loop is confirmed viable.
-2. The `linux-vm` sandbox class is not available on this account in either region (`daytona-vm-*` snapshots carry no regions). Consequently `fork()` is unavailable too — containers reject it with "Forking is not supported for this sandbox". Spawn policy is therefore create-from-S₀ only; the `spawn_mode: fork` path stays in config but is marked unavailable.
-3. Container create-from-snapshot latency is 0.5–1.7s. Concurrency probe: at least 6 concurrent sandboxes with no quota error.
-4. Volumes are created asynchronously (`pending_create` → `ready` in ~4s); creation must wait for ready before mounting. `VolumeMount` has no read-only flag, so dataset integrity is enforced by checksum re-verification at experiment start.
-5. `resize()` is not available for containers (the endpoint 404s). Sandbox size is fixed at creation by choosing the base snapshot (`daytona-small` 1cpu/1GiB/3GiB, `daytona-medium` 2/4/8, `daytona-large` 4/8/10).
-6. GPU sandboxes must be ephemeral (`auto_delete_interval=0`), matching the design; actual creation is blocked until the organization wallet has GPU credits. The G2 stage stays dormant until then.
-7. Organization/tier endpoints require user auth, not an API key — tier verification is a manual dashboard step, as is checking whether signup credits stack with event credits.
-8. Parallel Search round-trip: HTTP 200 with results — the key and the code-absence call site are verified.
-9. The generated SDK clients ignore proxy environment variables; on proxied networks every SDK call bypasses the proxy and dies. `repro/orchestrator/daytona_client.py` patches the client configuration to honor `HTTPS_PROXY`/`SSL_CERT_FILE` (a no-op elsewhere).
-10. Sandbox exec/file operations travel via the region runtime host (`proxy.app-eu.daytona.io` / `proxy.app-us.daytona.io`), a different domain from the control plane — network policies must allow those hosts too.
+## 6. Calibration run (live)
 
-## 6. Status
+1. Calibration paper: Fashion-MNIST (arXiv:1708.07747), chosen because its Table 3 benchmark claims are CPU-reproducible in minutes and its data is reachable from the sandbox egress allowlist. Claims were transcribed from the paper PDF (values cross-checked against the paper's own repository benchmark). Note: this paper has an official implementation — the code-absence wedge criterion is deliberately NOT satisfied by the calibration target; it exists to prove the pipeline, and its rows double as the false-positive check.
+2. P1 proven live: prereg frozen first (held-out annex separated), four dataset files staged and checksummed (hashes match the publisher's known values), environment built from recipe, smoke gate passed, S₀ frozen, fresh boot from S₀ re-passed smoke, archaeology box deleted.
+3. Staged data is baked into S₀ from the volume during archaeology, so experiments (including the hermetic one) never read the mount at run time; every run still re-verifies the ledger checksums first.
+4. P2/P3 verdict table: see `runs/` artifacts and the section below once published.
 
-1. Project scaffold in place.
-2. Day-0 verification script written and run live; findings above.
-3. Orchestrator spine built and unit-tested: append-only ledger (runs/attempts/verdicts/datasets/events), gate state machine (G1/G2/G3), budget ceilings, lifecycle policies with kill switch (delete-by-label, children first).
+## 7. Deliberate cuts (do not re-add)
+
+1. Batch-parent launcher (create-from-S₀ replaces it; fork is unavailable on this account anyway).
+2. Parallel for ambiguity resolution or any method-semantics lookup — unresolvable gaps become UNDER-CONSTRAINED, which is a finding, not a failure.
+3. Skeptic as a runtime agent (fixed menu + one adaptive round instead).
+4. Hot snapshots / memory persistence, GROBID/PDF toolchain, predictions files by default, open-ended reasoning checking, multi-paper corpus mode.
+
+## 8. Status
+
+1. Scaffold, Day-0 verification, orchestrator spine — done, unit-tested, verified live.
+2. P1 archaeology + S₀ freeze + boot-verify — proven live on the calibration paper.
+3. Prereg freeze + held-out annex + manifest gate + P2 executor + sham + hermeticity + P3 verdicts — built; live calibration verdict run in progress.
+4. LLM roles (Planner/Implementer/Verifier/Builder) built behind deterministic validation; they require `ANTHROPIC_API_KEY` at runtime and are optional for the deterministic path.
+5. P4 adaptive round and P5 thin build with deterministic fallback — built.
