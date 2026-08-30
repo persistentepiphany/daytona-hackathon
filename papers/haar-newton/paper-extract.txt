@@ -1,0 +1,1096 @@
+A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations (arXiv:1701.00468)
+
+A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations
+
+Report GitHub Issue
+
+×
+
+Title:
+
+Content selection saved. Describe the issue below:
+
+Description:
+
+Submit without GitHub
+
+Submit in GitHub
+
+arXiv is now an independent nonprofit!
+
+Learn more
+
+×
+
+Back to arXiv
+
+Why HTML?
+
+Report Issue
+
+Back to Abstract
+
+Download PDF
+
+Abstract
+
+1 
+Introduction
+
+2 
+A Modified Newton’s Method
+
+3 
+Convergence Analysis
+
+4 
+Numerical Examples
+
+5 
+Conclusion
+
+References
+
+ License: arXiv.org perpetual non-exclusive license
+
+arXiv:1701.00468v1 [math.NA] 27 Dec 2016
+
+A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations 
+
+Bijaya Mishra
+
+Note: 
+Department of mathematics,Gandhi Institute for Technological Advancement,
+Bhubaneswar-752054,India.Email:bijayamishra.math@gmail.com
+
+Ambit Kumar Pany
+
+Note: 
+Center for Applied Mathematics, Siksha O Anusandhan University, Bhubaneswar, Odisha,
+India, 751030. Email:ambit.pany@gmail.com
+
+Salila Dutta
+
+Note: 
+Department of Mathematics, Utkal University, Bhubaneswar, Odisha,
+India, 751004. Email:saliladutta516@gmail.com
+
+Abstract
+
+In this paper, we present a new modified Newton method a use of Haar wavelet formula for solving non-linear equations.
+This new method do not require the use of the second-order derivative. It is shown that the new method has third-order of
+convergent. Furthermore, some numerical experiments are conducted which confirm our theoretical findings.
+
+Keywords:
+ 
+Newton method; Haar wavelet; Iterative Method; Third-order convergence; Non-linear equations; Root-finding
+
+1 
+Introduction
+
+In numerical analysis, finding a solution of non-linear equation is one of the most attractive problem. In this paper, we
+emphasize on an iterative method to find a simple root 
+ $\alpha$ 
+ of a non-linear equation 
+ $f(x)=0$ 
+, i.e., 
+ $f(\alpha)=0$ 
+ and 
+ $f^{\prime}(\alpha)\neq 0$ 
+.
+Here, we less concern about multiple roots. Newton’s method 
+[
+1
+]
+,
+[
+6
+]
+ is the well known algorithm
+to solve nonlinear equation. It is given by
+
+ $x_{n+1}=x_{n}-\frac{f(x_{n})}{f^{\prime}(x_{n})}\,\,\,\,\,n=0,1,2,\cdots$ 
+
+(1.1)
+
+and it converges quadratically.
+
+Earlier, 
+[
+3
+]
+-
+[
+5
+]
+ and 
+[
+8
+]
+-
+[
+13
+]
+ derived third-order convergence methods based on integral interpretation of Newton’s method. Where,
+Newton’s method derived from different quadrature formulas for the indefinite integral arising from Newton’s theorem 
+[
+2
+]
+
+ $f(x)=f(x_{n})+\int_{x_{n}}^{x}f^{\prime}(t)dt.$ 
+
+(1.2)
+
+Weerakoon et al.
+[
+3
+]
+ have approximated the integral part of (
+1.2
+) by trapezoidal rules and derived a variant of Newton’s method. It is, further, shown that
+this method converges cubically. Subsequently, Frontini et al. 
+[
+4
+]
+ have proposed a third order convergent method
+by approximate the integral by the midpoint rule.
+In 
+[
+10
+]
+, Homeier has developed a cubically convergent iteration scheme by considering Newton’s theorem for the inverse function. Further, in 
+[
+11
+]
+, 
+[
+12
+]
+
+modified Newton methods are derived for multivariate case. Kou et al. in 
+[
+13
+]
+ have applied a new interval of integration on Newton’s theorem and arrived
+a third-order convergent iterative scheme.
+
+Recently, Islam et al.
+[
+7
+]
+ have applied Haar wavelet function to derived quadrature rules for indefinite integration.
+In this paper, we modified Newton’s theorem by using the quadrature rule proposed by Islam in 
+[
+7
+]
+. It is shown that the new method
+has third order convergent. Further, the new method did not evaluate second derivative of 
+ $f$ 
+. The efficiency of the new method
+is demonstrated by numerical examples.
+
+This paper is organized as follows. In Section 2, we discuss a modified Newton’s method.
+Section 3, we establish convergence analysis for the new method.
+finally in section 4, various numerical experiments conduct to confirm our theoretical finding.
+
+2 
+A Modified Newton’s Method
+
+To derive the new method, we consider Newton’s theorem
+
+ $\displaystyle f(x)=f(x_{n})+\int_{x_{n}}^{x}f^{\prime}(\tau)d\tau$ 
+
+(2.1)
+
+We use the Haar wavelet function to approximate the integral term of (
+2.1
+) as
+
+ $\int_{x_{n}}^{x}f^{\prime}(\tau)d\tau=\frac{(x-x_{n})}{2M}\sum_{k=1}^{2M}f^{\prime}\big(x_{n}+\frac{(x-x_{n})(k-0.5)}{2M}\big).$ 
+
+(2.2)
+
+where 
+ $M=2^{J_{1}}$ 
+ and 
+ $J_{1}$ 
+ is the maximum level of resolution of Haar wavelets, see 
+[
+7
+]
+.
+
+Substitute (
+2.2
+) in (
+2.1
+) to obtain
+
+ $f(x)=f(x_{n})+\frac{(x-x_{n})}{2M}\sum_{k=1}^{2M}f^{\prime}\big(x_{n}+\frac{(x-x_{n})(k-0.5)}{2M}\big).$ 
+
+(2.3)
+
+Now, looking for 
+ $f(x)=0$ 
+ we arrive at
+
+ $x_{n+1}=x_{n}-\frac{2M(f(x_{n}))}{\sum_{k=1}^{2M}f^{\prime}\big(x_{n}+\frac{(x-x_{n})(k-0.5)}{2M}\big)}$ 
+
+(2.4)
+
+Further, substitute 
+ $x_{n+1}=x$ 
+ in (
+1.1
+) and replace 
+ $x-x_{n}$ 
+ in (
+2.4
+) we obtain the new method as
+
+ $x_{n+1}=x_{n}-\frac{2M(f(x_{n}))}{\sum_{k=1}^{2M}f^{\prime}\big(x_{n}-\frac{f(x_{n})}{f^{\prime}(x_{n})}\frac{(k-0.5)}{2M}\big)}$ 
+
+(2.5)
+
+3 
+Convergence Analysis
+
+Theorem 3.1
+.
+
+Let the function 
+ $f:{{\rm I{\!}\rm D}}\subset{{\rm I{\!}\rm R}}\rightarrow{{\rm I{\!}\rm R}}$ 
+ has a simple root 
+ $\alpha\in{{\rm I{\!}\rm D}}$ 
+, where 
+ ${{\rm I{\!}\rm D}}$ 
+ is an open interval. Assume
+
+ $f(x)$ 
+ has first, second and third derivatives in the interval 
+ ${{\rm I{\!}\rm D}}$ 
+. If the initial guess 
+ $x_{0}$ 
+ is closed to 
+ $\alpha$ 
+, then the method defined by (
+2.5
+) converges cubically to
+
+ $\alpha$ 
+.
+
+Proof.
+ Let 
+ $\alpha$ 
+ is the simple root of 
+ $f(x)$ 
+ and 
+ $x_{n}=\alpha+e_{n}$ 
+. A use of Taylor expansion with 
+ $f(\alpha)=0$ 
+, we have
+
+ $\displaystyle f(x_{n})=f^{\prime}(\alpha)\big(e_{n}+C_{2}e_{n}^{2}+C_{3}e_{n}^{3}+O(e_{n}^{4})\big),$ 
+
+(3.6)
+
+where 
+ $C_{k}=\frac{1}{k!}\frac{f^{k}(\alpha)}{f^{\prime}(\alpha)}$ 
+. Again
+
+ $\displaystyle f^{\prime}(x_{n})=f^{\prime}(\alpha)\big(1+2C_{2}e_{n}+3C_{3}e_{n}^{2}+4C_{4}e_{n}^{3}+O(e_{n}^{4})\big).$ 
+
+(3.7)
+
+Further, dividing (
+3.6
+) by (
+3.7
+) yields
+
+ $\displaystyle\frac{f(x_{n})}{f^{\prime}(x_{n})}=\big(e_{n}-C_{2}e_{n}^{2}+2(C_{2}^{2}-C_{3})e_{n}^{3}+O(e_{n}^{4})\big).$ 
+
+(3.8)
+
+Now,
+
+ $\displaystyle x_{n}-M_{k}\frac{f(x_{n})}{f^{\prime}(x_{n})}=x_{n}-M_{k}\big(e_{n}-C_{2}e_{n}^{2}+2(C_{2}^{2}-C_{3})e_{n}^{3}+O(e_{n}^{4})\big),$ 
+
+(3.9)
+
+where 
+ $M_{k}=\frac{(k-0.5)}{2M}$ 
+.
+
+Equation (
+3.9
+) rewrite as
+
+ $\displaystyle x_{n}-M_{k}\frac{f(x_{n})}{f^{\prime}(x_{n})}$ 
+
+ $\displaystyle=x_{n}-M_{k}\big(e_{n}-C_{2}e_{n}^{2}+2(C_{2}^{2}-C_{3})e_{n}^{3}+O(e_{n}^{4})\big),$ 
+
+ $\displaystyle=x_{n}-M_{k}e_{n}+M_{k}C_{2}e_{n}^{2}-2(C_{2}^{2}-C_{3})M_{k}e_{n}^{3}+O(e_{n}^{4}),$ 
+
+ $\displaystyle=x_{n}-(1-1+M_{k})e_{n}+M_{k}C_{2}e_{n}^{2}-2(C_{2}^{2}-C_{3})M_{k}e_{n}^{3}+O(e_{n}^{4}),$ 
+
+ $\displaystyle=x_{n}-e_{n}+(1-M_{k})e_{n}+M_{k}C_{2}e_{n}^{2}-2(C_{2}^{2}-C_{3})M_{k}e_{n}^{3}+O(e_{n}^{4}),$ 
+
+ $\displaystyle=\alpha+(1-M_{k})e_{n}+M_{k}C_{2}e_{n}^{2}-2(C_{2}^{2}-C_{3})M_{k}e_{n}^{3}+O(e_{n}^{4}).$ 
+
+(3.10)
+
+From (
+3.10
+) we can easily find that
+
+ $\displaystyle f^{\prime}(x_{n}-M_{k}\frac{f(x_{n})}{f^{\prime}(x_{n})})$ 
+
+ $\displaystyle=f^{\prime}(\alpha)\big(1+2C_{2}(1-M_{k})e_{n}+(2C_{2}^{2}M_{k}+3C_{3}(1-M_{k})^{2})e_{n}^{2}+O(e_{n}^{3})\big).$ 
+
+(3.11)
+
+Hence,
+
+ $\displaystyle\sum_{k=1}^{N}f^{\prime}(x_{n}-M_{k}\frac{f(x_{n})}{f^{\prime}(x_{n})})$ 
+
+ $\displaystyle=\sum_{k=1}^{N}f^{\prime}(\alpha)\big(1+2C_{2}(1-M_{k})e_{n}+(2C_{2}^{2}M_{k}+3C_{3}(1-M_{k})^{2})e_{n}^{2}+O(e_{n}^{3})\big),$ 
+
+ $\displaystyle=f^{\prime}(\alpha)\sum_{k=1}^{N}\big(1+2C_{2}(1-M_{k})e_{n}+(2C_{2}^{2}M_{k}+3C_{3}(1-M_{k})^{2})e_{n}^{2}+O(e_{n}^{3})\big),$ 
+
+ $\displaystyle=f^{\prime}(\alpha)\big(\sum_{k=1}^{N}1+2C_{2}e_{n}\sum_{k=1}^{N}(1-M_{k})+2C_{2}^{2}e_{n}^{2}\sum_{k=1}^{N}M_{k}+3C_{3}e_{n}^{2}\sum_{k=1}^{N}(1-M_{k})^{2}+O(e_{n}^{3})\big),$ 
+
+ $\displaystyle=f^{\prime}(\alpha)\big(N+2C_{2}Ne_{n}-2C_{2}e_{n}N/2+2C_{2}^{2}e_{n}^{2}N/2+3C_{3}e_{n}^{2}N$ 
+
+ $\displaystyle+3C_{3}e_{n}^{2}\big(\frac{N}{3}-\frac{1}{12N}\big)-6C_{3}e_{n}^{2}N/2+O(e_{n}^{3})\big)$ 
+
+ $\displaystyle=f^{\prime}(\alpha)\big(N+2C_{2}Ne_{n}+\big(NC_{2}^{2}+NC_{3}-\frac{C_{3}}{4N}\big)e_{n}^{2}+O(e_{n}^{3})\big)$ 
+
+(3.12)
+
+substitute (
+3.12
+) and (
+3.6
+) in(
+2.5
+) we obtain
+
+ $\displaystyle x_{n+1}$ 
+
+ $\displaystyle=x_{n}-\frac{\big(e_{n}+C_{2}e_{n}^{2}+C_{3}e_{n}^{3}+O(e_{n}^{4})\big)}{\big(N+2C_{2}Ne_{n}+\big(NC_{2}^{2}+NC_{3}-\frac{C_{3}}{4N}\big)e_{n}^{2}+O(e_{n}^{3})\big)},$ 
+
+ $\displaystyle=x_{n}-\big(e_{n}+\big(-C_{2}^{2}+\frac{C_{3}}{4N^{2}}\big)e_{n}^{3}+O(e_{n}^{4})\big).$ 
+
+(3.13)
+
+Substract 
+ $\alpha$ 
+ from both side of (
+3.13
+), then we have
+
+ $e_{n+1}=\big(C_{2}^{2}-\frac{C_{3}}{4N^{2}}\big)e_{n}^{3}+O(e_{n}^{4})$ 
+
+(3.14)
+
+this completes the rest of the proof. 
+ $\Box$ 
+
+4 
+Numerical Examples
+
+In this section, we present some numerical results for various third order convergent iterative methods.
+The following methods were compared:
+
+Modified Newton’s Method in Weerakoon and Fernando 
+[
+3
+]
+ 
+ $x_{n+1}=x_{n}-\frac{2f(x_{n})}{f^{\prime}\big(xn-\frac{f(x_{n})}{f^{\prime}(x_{n})}\big)+f^{\prime}(x_{n})}$ 
+.
+
+Modified Newton’s Method proposed by Frontini et al. 
+[
+4
+]
+ 
+ $x_{n+1}=x_{n}-\frac{f(x_{n})}{f^{\prime}\big(x_{n}-2\frac{f(x_{n})}{f^{\prime}(x_{n})}\big)}$ 
+.
+
+Modified Newton’s Method derived by Ozbal et al. 
+[
+5
+]
+ 
+ $x_{n+1}=x_{n}-\frac{f(x_{n})}{2}\big(\frac{1}{f^{\prime}(x_{n})}+\frac{1}{f^{\prime}\big(x_{n}-\frac{f(x_{n})}{f^{\prime}(x_{n})}\big)}\big)$ 
+.
+
+Modified Newton’s Method derived by Kou et al. 
+[
+13
+]
+ 
+ $x_{n+1}=x_{n}-\frac{f\big(x_{n}+\frac{f(x_{n})}{f^{\prime}(x_{n})}\big)-f(x_{n})}{f^{\prime}(x_{n})}$ 
+.
+
+and method proposed by (
+2.5
+) with 
+ $M=1$ 
+, 
+ $x_{n+1}=x_{n}-\frac{2(f(x_{n}))}{\sum_{k=1}^{2}f^{\prime}\big(x_{n}-\frac{f(x_{n})}{f^{\prime}(x_{n})}\frac{(k-0.5)}{2}\big)}$ 
+.
+
+For every problem an attempt made to find an approximation 
+ $x_{n}$ 
+ of the simple root of equation 
+ $f(x)=0$ 
+ through 
+ $n$ 
+ times
+iterations. The number of function evaluations (NFE) is counted as the sum of the number of evaluations of the function 
+ $f$ 
+ and its
+first order derivative 
+ $f^{\prime}$ 
+ . The computational results are displayed in Table 1.
+
+The numerical experiments carried over the following equation:
+
+ $\displaystyle f_{1}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle x^{5}-x+1,$ 
+
+ $\displaystyle f_{2}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle cosx-x,$ 
+
+ $\displaystyle f_{3}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle arctanx,$ 
+
+ $\displaystyle f_{4}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle 10xe^{-x^{2}}-1,$ 
+
+ $\displaystyle f_{5}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle e^{-x}sinx+log(x^{2}+1),$ 
+
+ $\displaystyle f_{6}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle x^{3}-e{-x},$ 
+
+ $\displaystyle f_{7}(x)$ 
+
+ $\displaystyle=$ 
+
+ $\displaystyle e{-x}-cosx,$ 
+
+The numerical results presented in Table 1 show that the proposed method has perform equally as compared with the
+other methods of the same order. Thus, the new methods can compete with other third-order methods in literature.
+
+Function
+
+ $x_{0}$ 
+
+Various Method
+
+IT
+
+NFE
+
+ $x_{n}$ 
+
+ $f_{1}$ 
+
+2
+
+MNM(
+[
+3
+]
+)
+
+Diverse
+
+MNM(
+[
+4
+]
+)
+
+Diverse
+
+MNM(
+[
+5
+]
+)
+
+13
+
+39
+
+-1.16730397826142
+
+MNM(
+[
+13
+]
+)
+
+17
+
+51
+
+-1.16730397826142
+
+MNM New
+
+9
+
+36
+
+-1.16730397826142
+
+ $f_{2}$ 
+
+1.2
+
+MNM(
+[
+3
+]
+)
+
+4
+
+12
+
+0.739085133215161
+
+MNM(
+[
+4
+]
+)
+
+Diverse
+
+MNM(
+[
+5
+]
+)
+
+Diverse
+
+MNM(
+[
+13
+]
+)
+
+4
+
+12
+
+0.739085133215161
+
+MNM New
+
+4
+
+16
+
+0.739085133215161
+
+ $f_{3}$ 
+
+3
+
+MNM(
+[
+3
+]
+)
+
+Diverse
+
+MNM(
+[
+4
+]
+)
+
+Diverse
+
+MNM(
+[
+5
+]
+)
+
+Diverse
+
+MNM(
+[
+13
+]
+)
+
+4
+
+12
+
+0.000000000000015
+
+MNM New
+
+4
+
+16
+
+0.0
+
+ $f_{4}$ 
+
+2.5
+
+MNM(
+[
+3
+]
+)
+
+4
+
+12
+
+1.67963061042845
+
+MNM(
+[
+4
+]
+)
+
+7
+
+21
+
+1.67963061042845
+
+MNM(
+[
+5
+]
+)
+
+4
+
+12
+
+0.101025848315685
+
+MNM(
+[
+13
+]
+)
+
+6
+
+18
+
+1.67963061042845
+
+MNM New
+
+5
+
+20
+
+1.67963061042845
+
+ $f_{5}$ 
+
+1.3
+
+MNM(
+[
+3
+]
+)
+
+3
+
+9
+
+7.68481808334733E-021
+
+MNM(
+[
+4
+]
+)
+
+4
+
+12
+
+1.7197167733818E-028
+
+MNM(
+[
+5
+]
+)
+
+4
+
+12
+
+5.12759588393657E-030
+
+MNM(
+[
+13
+]
+)
+
+3
+
+9
+
+3.82180552357862E-019
+
+MNM New
+
+3
+
+12
+
+4.53468286561001E-017
+
+ $f_{6}$ 
+
+2
+
+MNM(
+[
+3
+]
+)
+
+5
+
+15
+
+0.77288295914921
+
+MNM(
+[
+4
+]
+)
+
+4
+
+12
+
+0.77288295914921
+
+MNM(
+[
+5
+]
+)
+
+4
+
+12
+
+0.77288295914921
+
+MNM(
+[
+13
+]
+)
+
+5
+
+15
+
+0.77288295914921
+
+MNM New
+
+4
+
+16
+
+0.77288295914921
+
+ $f_{7}$ 
+
+2
+
+MNM(
+[
+3
+]
+)
+
+3
+
+9
+
+1.29269571937339
+
+MNM(
+[
+4
+]
+)
+
+3
+
+9
+
+1.29269571937339
+
+MNM(
+[
+5
+]
+)
+
+4
+
+12
+
+1.29269571937339
+
+MNM(
+[
+13
+]
+)
+
+4
+
+12
+
+1.29269571937339
+
+MNM New
+
+3
+
+12
+
+1.29269571937339
+
+Table 1: 
+Comparison of various third order convergent iterative methods and the New Newton method
+
+5 
+Conclusion
+
+This article deals with a new modified Newton methods for solving nonlinear equations.
+In Theorem (
+3.1
+), it is proved that the new method has third order convergence. Further, the new methods can compete with other
+third-order methods. Finally, numerical experiments are conducted to confirm our theoretical findings.
+The new method has great practical utility.
+
+References
+
+[1]
+
+A.M. Ostrowski, 
+Solution of Equations in Euclidean and Banach Space
+, third ed., Academic Press, New York, 1973.
+
+[2]
+
+J.E. Dennis, R.B. Schnable, 
+Numerical Methods for Unconstrained Optimization and
+Nonlinear Equations
+, Prentice Hall, 1983.
+
+[3]
+
+S. Weerakoon, T.G.I. Fernando,
+A variant of Newton’s method with accelerated third-order convergence
+, Appl. Math. Lett., 13
+(2000), pp. 87–93.
+
+[4]
+
+M. Frontini, E. Sormani, 
+Some variants of Newton’s method with third-order convergence
+, Appl. Math. Comput.,
+140 , (2003), pp. 419–426.
+
+[5]
+
+A. Y. Ozban, 
+Some new variants of Newton’s method
+, Appl. Math. Lett., 17 ,(2004), pp. 677–682.
+
+[6]
+
+Conte, S. D. and De Boor Carl, 
+Elementary numerical analysis
+, Mc Graw Hill, Kogakusha Ltd., (1972).
+
+[7]
+
+S. u. Islam, I. Aziz and F. Haq, A comparative study of numerical integration based on haar wavelets and hybrid functions,
+Comput. Math. Appl., 59, (2010), pp. 2026–2036
+
+[8]
+
+M. Frontini, E. Sormani, 
+Modified Newton’s method with third-order convergence and multiple roots
+, J. Comput. Appl. Math., 156,
+(2003), pp. 345–354.
+
+[9]
+
+M. Frontini, E. Sormani,
+Third-order methods from quadrature formulae for solving systems of nonlinear equations
+, Appl. Math.
+Comput., 149, (2004), pp. 771–782.
+
+[10]
+
+H.H.H. Homeier, A modified Newton method for root finding with cubic convergence, J. Comput. Appl. Math., 157, (2003), pp. 227–230.
+
+[11]
+
+H.H.H. Homeier, 
+A modified Newton method with cubic convergence: the multivariate case
+, J. Comput. Appl. Math., 169 ,(2004), pp. 161–
+169.
+
+[12]
+
+H.H.H. Homeier, 
+On Newton-type methods with cubic convergence
+, J. Comput. Appl. Math., 176, (2005), pp. 425–432.
+
+[13]
+
+J. Kou, Y. Li, X. Wang, 
+A modification of Newton method with third-order convergence
+, Appl. Math.
+Comput., 181, (2006), pp. 1106–1111.
+
+ Experimental support, please
+ 
+view the build logs
+
+ for errors. Generated by
+
+ L
+ 
+A
+
+ T
+ 
+E
+
+xml
+
+.
+
+Instructions for reporting errors
+
+We are continuing to improve HTML versions of papers, and your feedback helps enhance accessibility and mobile
+ support. To report errors in the HTML that will help us improve conversion and rendering, choose any of the
+ methods listed below:
+
+Click the "Report Issue" 
+(
+
+)
+ button, located in the page header.
+
+Tip:
+ You can select the relevant text first, to include it in your report.
+
+Our team has already identified 
+the following issues
+. We appreciate your time reviewing and reporting rendering errors we
+ may not have found yet. Your efforts will help us improve the HTML versions for all readers, because disability
+ should not be a barrier to accessing research. Thank you for your continued support in championing open access for
+ all.
+
+Have a free development cycle? Help support accessibility at arXiv! Our collaborators at LaTeXML maintain a 
+list of packages that need conversion
+, and welcome 
+developer contributions
+.
+
+ We gratefully acknowledge support from
+ our 
+major funders
+,
+ 
+member institutions
+, 
+,
+ and all contributors.
+
+About
+
+·
+
+Help
+
+·
+
+Contact
+
+·
+
+Subscribe
+
+·
+
+Copyright
+
+·
+
+Privacy
+
+·
+
+Accessibility
+
+·
+
+Operational Status
+ (opens in new tab)
+
+Major funding support from

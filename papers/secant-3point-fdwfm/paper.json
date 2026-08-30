@@ -1,0 +1,14 @@
+{
+  "paper_id": "secant-3point-fdwfm",
+  "title": "Finite Difference Weerakoon-Fernando Method to solve nonlinear equations without using derivatives",
+  "authors": [
+    "S. L. Heenatigala",
+    "S. Weerakoon",
+    "T. G. I. Fernando"
+  ],
+  "arxiv_id": "2102.02367",
+  "pdf_url": "https://arxiv.org/pdf/2102.02367",
+  "pdf_sha256": "4af4e5dada1b7056335885be84f531371a47d92c485d80e7a1fbc70b0e68ba86",
+  "extract_source": "arxiv.org/html (LaTeX-rendered; MathML alttext kept as inline TeX)",
+  "notes": "Tier-1 foreign shape: deterministic root-finding, no data staging, iteration counts and computational order of convergence as the reported numbers. The code-absence search returned one hit on a code host, but it is not a release of this paper (a keyword match on a generic repository name). The hit is recorded rather than dropped: the gate therefore returns FOUND and the run proceeds under the logged calibration override, exactly as the fashion-mnist and best-scored-rf packs do. Judging relevance is the human's call at G1, not a filter the pack applies silently."
+}

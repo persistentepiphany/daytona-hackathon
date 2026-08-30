@@ -1,0 +1,51 @@
+{
+  "certified_at": "2026-08-30T15:33:09Z",
+  "objective": "Determine whether any official or third-party source code release exists for the paper 'A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations'.",
+  "queries": [
+    "A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations official source code repository",
+    "A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations Bijaya Mishra code release github",
+    "A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations supplementary code zenodo OSF"
+  ],
+  "status": "COMPLETED",
+  "promotion_rule": "a search hit counts as a code release only if its host is one of ['github.com', 'gitlab.com', 'bitbucket.org', 'zenodo.org', 'osf.io', 'codeocean.com', 'sourceforge.net', 'huggingface.co']; everything else stays evidence",
+  "search_trail": [
+    {
+      "url": "https://arxiv.org/abs/1701.00468",
+      "title": "[1701.00468] A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations"
+    },
+    {
+      "url": "https://www.academia.edu/101717829/A_New_Modified_Newton_Method_use_of_Haar_wavelet_for_solving_Nonlinear_equations",
+      "title": "(PDF) A New Modified Newton Method use of Haar wavelet ..."
+    },
+    {
+      "url": "https://www.researchgate.net/publication/312031309_A_New_Modified_Newton_Method_use_of_Haar_wavelet_for_solving_Nonlinear_equations",
+      "title": "(PDF) A New Modified Newton Method use of Haar wavelet ..."
+    },
+    {
+      "url": "https://zendy.io/pdf-viewer/1701.00468",
+      "title": "A New Modified Newton Method use of Haar wavelet ..."
+    },
+    {
+      "url": "https://www.researchgate.net/publication/343557228_A_modified_Newton-like_method_for_nonlinear_equations",
+      "title": "A modified Newton-like method for nonlinear equations"
+    },
+    {
+      "url": "https://github.com/newton-physics/newton/blob/main/LICENSE.md",
+      "title": "newton/LICENSE.md at main \u00b7 newton-physics/newton \u00b7 GitHub"
+    },
+    {
+      "url": "https://d-nb.info/1112813721/34",
+      "title": "A new Newton-like method for solving nonlinear equations"
+    },
+    {
+      "url": "https://www.ejpam.com/ejpam/article/view/4951/1512",
+      "title": "New Variants of Newton\u2019s Method for Solving Nonlinear Equations"
+    }
+  ],
+  "results": [
+    {
+      "url": "https://github.com/newton-physics/newton/blob/main/LICENSE.md",
+      "title": "newton/LICENSE.md at main \u00b7 newton-physics/newton \u00b7 GitHub"
+    }
+  ]
+}

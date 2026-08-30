@@ -1,0 +1,14 @@
+{
+  "paper_id": "haar-newton",
+  "title": "A New Modified Newton Method use of Haar wavelet for solving Nonlinear equations",
+  "authors": [
+    "Bijaya Mishra",
+    "Ambit Kumar Pany",
+    "Salila Dutta"
+  ],
+  "arxiv_id": "1701.00468",
+  "pdf_url": "https://arxiv.org/pdf/1701.00468",
+  "pdf_sha256": "8e1224b9dd85c859663900f14094f64e0f508d93ede9adbcd02c60fba90b063e",
+  "extract_source": "arxiv.org/html (LaTeX-rendered; MathML alttext kept as inline TeX)",
+  "notes": "Tier-1: every comparator's formula is stated inline, so the ambiguity ledger stays short. Table 1 reports IT/NFE per test function. The code-absence search returned one hit on a code host, but it is not a release of this paper (a keyword match on a generic repository name). The hit is recorded rather than dropped: the gate therefore returns FOUND and the run proceeds under the logged calibration override, exactly as the fashion-mnist and best-scored-rf packs do. Judging relevance is the human's call at G1, not a filter the pack applies silently."
+}

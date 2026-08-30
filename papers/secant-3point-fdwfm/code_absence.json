@@ -1,0 +1,51 @@
+{
+  "certified_at": "2026-08-30T15:33:07Z",
+  "objective": "Determine whether any official or third-party source code release exists for the paper 'Finite Difference Weerakoon-Fernando Method to solve nonlinear equations without using derivatives'.",
+  "queries": [
+    "Finite Difference Weerakoon-Fernando Method to solve nonlinear equations without using derivatives official source code repository",
+    "Finite Difference Weerakoon-Fernando Method to solve nonlinear equations without using derivatives S. L. Heenatigala code release github",
+    "Finite Difference Weerakoon-Fernando Method to solve nonlinear equations without using derivatives supplementary code zenodo OSF"
+  ],
+  "status": "COMPLETED",
+  "promotion_rule": "a search hit counts as a code release only if its host is one of ['github.com', 'gitlab.com', 'bitbucket.org', 'zenodo.org', 'osf.io', 'codeocean.com', 'sourceforge.net', 'huggingface.co']; everything else stays evidence",
+  "search_trail": [
+    {
+      "url": "https://ui.adsabs.harvard.edu/abs/arXiv:2102.02367",
+      "title": "Finite Difference Weerakoon-Fernando Method to solve ..."
+    },
+    {
+      "url": "https://arxiv.org/pdf/2102.02367",
+      "title": "Finite Difference Weerakoon-Fernando Method to solve ..."
+    },
+    {
+      "url": "https://www.researchgate.net/publication/349052397_Finite_Difference_Weerakoon-Fernando_Method_to_solve_nonlinear_equations_without_using_derivatives",
+      "title": "(PDF) Finite Difference Weerakoon-Fernando Method to ..."
+    },
+    {
+      "url": "https://github.com/fuentesigma/finitedifference",
+      "title": "fuentesigma/finitedifference"
+    },
+    {
+      "url": "https://scispace.com/papers/weerakoon-fernando-method-with-accelerated-third-order-32ok76x1k8",
+      "title": "Weerakoon-Fernando Method with accelerated third-order ..."
+    },
+    {
+      "url": "https://www.mathworks.com/matlabcentral/answers/1680559-finite-difference-method-to-solve-a-nonlinear-eqn",
+      "title": "Finite difference method to solve a nonlinear eqn?"
+    },
+    {
+      "url": "https://www.ejpam.com/ejpam/article/view/6262/2346",
+      "title": "Derivative-Free Method for Nonlinear Systems with Some Real-life Applications"
+    },
+    {
+      "url": "https://www.ejpam.com/index.php/ejpam/article/view/6262/2346",
+      "title": "Derivative-Free Method for Nonlinear Systems with Some Real-life Applications"
+    }
+  ],
+  "results": [
+    {
+      "url": "https://github.com/fuentesigma/finitedifference",
+      "title": "fuentesigma/finitedifference"
+    }
+  ]
+}
