@@ -7,6 +7,7 @@ receives a discrepancy packet computed deterministically by the orchestrator
 """
 
 import json
+from pathlib import Path
 
 from ..pipeline.p1_archaeology import ArchaeologyError
 from ..roles import implementer
@@ -56,7 +57,7 @@ def propose(provider, method_spec: str, feedback: list[dict],
 
 def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
                    secrets: list[str], claims: list[dict] | None = None,
-                   log=print) -> dict:
+                   candidate_dir=None, log=print) -> dict:
     """Drive the archaeology session to a smoke-passing state, or exhaust the cap.
 
     Returns {"ok": bool, "iterations": int, "attempts": [...], "last_feedback": ...}.
@@ -79,6 +80,14 @@ def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
 
         attempt["files"] = sorted(proposal["files"])
         attempt["commands"] = len(proposal["commands"])
+        if candidate_dir is not None:
+            # the source only ever existed in the sandbox's RECIPE.sh, which dies
+            # with the archaeology box; keep a local copy of what was proposed
+            out = Path(candidate_dir) / f"round{i}"
+            out.mkdir(parents=True, exist_ok=True)
+            for name, content in proposal["files"].items():
+                (out / Path(name).name).write_text(content)
+            (out / "commands.sh").write_text("\n".join(proposal["commands"]) + "\n")
         log(f"  round {i}: {len(proposal['files'])} files, "
             f"{len(proposal['commands'])} commands -> applying")
         try:

@@ -1,0 +1,22 @@
+{
+  "data": {
+    "dir": "localdata"
+  },
+  "dt_fashion_1": {
+    "model": "DecisionTreeClassifier",
+    "params": {
+      "criterion": "entropy",
+      "max_depth": 10,
+      "splitter": "best"
+    },
+    "repetitions": 5
+  },
+  "svc_fashion_1": {
+    "model": "SVC",
+    "params": {
+      "C": 10,
+      "kernel": "poly"
+    },
+    "repetitions": 5
+  }
+}

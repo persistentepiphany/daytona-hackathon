@@ -106,7 +106,8 @@ def main() -> int:
     try:
         log(f"P1 implementer build loop (cap {MAX_ITERATIONS} rounds)")
         build_result = build_to_smoke(arch, provider, paper_text, ledger, run_id,
-                                      secrets, claims=doc["claims"], log=log)
+                                      secrets, claims=doc["claims"],
+                                      candidate_dir=run_dir / "candidate", log=log)
         if build_result["ok"]:
             s0 = f"s0-{run_id}"
             frozen = arch.freeze(s0)
