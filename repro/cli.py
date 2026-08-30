@@ -33,6 +33,42 @@ def cmd_replay(args) -> int:
     return 0
 
 
+def cmd_rerun(args) -> int:
+    from .orchestrator.budget import Budget
+    from .orchestrator.daytona_client import DaytonaAdapter
+    from .orchestrator.gates import Gates
+    from .orchestrator.ledger import Ledger
+    from .orchestrator.lifecycle import Lifecycle
+    from .orchestrator.prereg import load_prereg
+    from .pipeline.p2_experiments import reconstruct_attempt, run_experiment
+
+    ledger = Ledger(args.ledger)
+    replay = reconstruct_attempt(ledger, args.attempt)
+    run_dir = Path(args.run_dir)
+    prereg, prereg_hash = load_prereg(run_dir / "prereg.json")
+    if prereg_hash != replay["manifest"]["prereg_hash"]:
+        annex_path = run_dir / "prereg_annex.json"
+        prereg = json.loads(annex_path.read_text())
+        import hashlib
+
+        from .orchestrator.prereg import canonical_json
+        prereg_hash = hashlib.sha256(canonical_json(prereg).encode()).hexdigest()
+        if prereg_hash != replay["manifest"]["prereg_hash"]:
+            print("attempt's prereg document is not among the run artifacts", file=sys.stderr)
+            return 1
+    run_id = replay["run_id"]
+    gates = Gates(ledger)
+    life = Lifecycle(DaytonaAdapter(), ledger, gates,
+                     Budget(ledger, run_id, {"sandbox_minutes": 4000}), run_id)
+    metrics = run_experiment(
+        life, life.adapter, ledger, run_id, prereg, prereg_hash, replay["manifest"],
+        replay["s0_snapshot"], replay["dataset_hashes"], run_dir / "evidence",
+        data_mode=replay["data_mode"],
+    )
+    print(json.dumps(metrics, indent=2))
+    return 0
+
+
 def cmd_report(args) -> int:
     from .orchestrator.ledger import Ledger
     from .pipeline.report import report_from_files
@@ -43,6 +79,13 @@ def cmd_report(args) -> int:
     out.write_text(text)
     print(text)
     print(f"written to {out}", file=sys.stderr)
+    return 0
+
+
+def cmd_dashboard(args) -> int:
+    from .dashboard import serve
+
+    serve(args.ledger, args.evidence_root, args.port)
     return 0
 
 
@@ -81,6 +124,18 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--ledger", required=True)
     r.add_argument("--attempt", required=True)
     r.set_defaults(fn=cmd_replay)
+
+    rr = sub.add_parser("rerun", help="re-execute an attempt reconstructed from the ledger")
+    rr.add_argument("--ledger", required=True)
+    rr.add_argument("--attempt", required=True)
+    rr.add_argument("--run-dir", required=True)
+    rr.set_defaults(fn=cmd_rerun)
+
+    d = sub.add_parser("dashboard", help="serve the local run dashboard over the ledger")
+    d.add_argument("--ledger", required=True)
+    d.add_argument("--evidence-root", default="runs")
+    d.add_argument("--port", type=int, default=8600)
+    d.set_defaults(fn=cmd_dashboard)
 
     p = sub.add_parser("report", help="render the verdict report from persisted artifacts")
     p.add_argument("--run-dir", required=True)

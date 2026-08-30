@@ -8,7 +8,9 @@ the evidence volume when one is mounted.
 """
 
 import hashlib
+import io
 import json
+import tarfile
 import time
 from pathlib import Path
 
@@ -27,13 +29,51 @@ class ExperimentError(RuntimeError):
     pass
 
 
+def candidate_tarball(files: dict[str, str]) -> tuple[bytes, str]:
+    """Deterministic tar.gz of the candidate (sorted names, zeroed metadata) and
+    its sha256 — the pinned SHA the delivery is verified against."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as tar:
+        for name in sorted(files):
+            data = files[name].encode()
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            info.mtime = 0
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            tar.addfile(info, io.BytesIO(data))
+    data = buf.getvalue()
+    return data, hashlib.sha256(data).hexdigest()
+
+
+def deliver_candidate(adapter: SandboxAdapter, sid: str, files: dict[str, str],
+                      work: str = WORK) -> str:
+    """Code delivery is a tarball at a pinned SHA, uploaded via the filesystem API
+    and verified after landing — never a clone. Returns the pinned SHA."""
+    data, sha = candidate_tarball(files)
+    remote = f"{work}/candidate-{sha[:12]}.tar.gz"
+    adapter.write_file(sid, remote, data)
+    landed = adapter.read_file(sid, remote)
+    if hashlib.sha256(landed).hexdigest() != sha:
+        raise ExperimentError(f"candidate tarball corrupted in transit (expected {sha[:16]})")
+    r = adapter.exec(sid, f"tar -xzf {remote}", cwd=work, timeout=300)
+    if r.exit_code != 0:
+        raise ExperimentError(f"candidate tarball extraction failed: {r.output[-500:]}")
+    return sha
+
+
 def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run_id: str,
                    prereg: dict, prereg_hash: str, manifest: dict, s0_snapshot: str,
                    dataset_hashes: dict[str, str], evidence_root: str | Path,
                    volumes: list[tuple[str, str]] | None = None,
-                   hermetic: bool = False, data_local_dir: str = "localdata") -> dict:
+                   hermetic: bool = False, data_local_dir: str = "localdata",
+                   candidate_files: dict[str, str] | None = None,
+                   data_mode: str = "staged") -> dict:
     mh = validate_manifest(manifest, prereg, prereg_hash)
     exp_id = manifest["experiment_id"]
+    # persist the full manifest so a rerun reconstructs from the ledger alone
+    ledger.log_event(run_id, "manifest_frozen",
+                     {"manifest_hash": mh, "manifest": manifest, "data_mode": data_mode})
     ttl = int(manifest["budget"]["ttl_min"]) * 2  # TTL backstop = estimate x 2
     attempt_id = ledger.start_attempt(
         run_id, exp_id, mh, "snapshot", s0_snapshot, manifest["command"],
@@ -63,7 +103,15 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
     evidence_dir.mkdir(parents=True, exist_ok=True)
     exit_code = 1
     try:
-        _verify_datasets(adapter, sid, dataset_hashes, data_local_dir)
+        if data_mode == "synthetic":
+            # no staged data: experiments generate from the manifest's condition
+            ledger.log_event(run_id, "synthetic_data", {"exp_id": exp_id,
+                                                        "condition": manifest.get("condition")})
+        else:
+            _verify_datasets(adapter, sid, dataset_hashes, data_local_dir)
+        if candidate_files:
+            sha = deliver_candidate(adapter, sid, candidate_files)
+            ledger.log_event(run_id, "candidate_delivered", {"exp_id": exp_id, "sha256": sha})
         adapter.write_file(sid, f"{WORK}/manifest.json", dump_manifest(manifest).encode())
         adapter.write_file(sid, f"{WORK}/runner.py", RUNNER_PY.encode())
         adapter.write_file(sid, f"{WORK}/runner.sh",
@@ -103,6 +151,19 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         except Exception:
             pass
         life.stop(sid)  # auto-delete interval 0 removes it
+
+
+def reconstruct_attempt(ledger: Ledger, attempt_id: str) -> dict:
+    """Rebuild everything a rerun needs from the ledger alone: the replay tuple
+    plus the frozen manifest persisted at execution time."""
+    replay = ledger.resolve_replay(attempt_id)
+    for row in ledger.events_for(replay["run_id"], "manifest_frozen"):
+        payload = json.loads(row["payload"])
+        if payload.get("manifest_hash") == replay["manifest_hash"]:
+            replay["manifest"] = payload["manifest"]
+            replay["data_mode"] = payload.get("data_mode", "staged")
+            return replay
+    raise ExperimentError(f"no frozen manifest recorded for attempt {attempt_id}")
 
 
 def _verify_datasets(adapter: SandboxAdapter, sid: str, dataset_hashes: dict[str, str],

@@ -17,8 +17,16 @@ class StagingError(RuntimeError):
 
 def stage_datasets(lifecycle: Lifecycle, adapter: SandboxAdapter, ledger: Ledger,
                    run_id: str, base_snapshot: str, volume_name: str,
-                   files: dict[str, str], subdir: str) -> dict[str, str]:
-    """files: {relative_name: url}. Returns {volume_path: sha256}."""
+                   files: dict[str, str], subdir: str,
+                   data_mode: str = "staged") -> dict[str, str]:
+    """files: {relative_name: url}. Returns {volume_path: sha256}.
+
+    With data_mode="synthetic" staging is a no-op: experiments generate their data
+    from the manifest's condition, so there is nothing to download or checksum.
+    """
+    if data_mode == "synthetic":
+        ledger.log_event(run_id, "staging_skipped", {"data_mode": "synthetic"})
+        return {}
     volume_id = adapter.volume_ensure(volume_name)
     sid = lifecycle.create("data_stager", name=f"stage-{run_id}", snapshot=base_snapshot,
                            volumes=[(volume_id, MOUNT)])

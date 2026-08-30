@@ -26,6 +26,7 @@ def build_manifest(prereg: dict, prereg_hash: str, experiment_id: str,
         "prereg_hash": prereg_hash,
         "claim_id": entry["claim_id"],
         "type": entry["type"],
+        "condition": entry.get("condition"),
         "mutation": entry.get("mutation"),
         "seeds": list(entry.get("seeds") or prereg["seeds"]),
         "command": entry.get("command", f"bash runner.sh {experiment_id}"),
@@ -59,6 +60,9 @@ def validate_manifest(manifest: dict, prereg: dict, prereg_hash: str) -> str:
     else:
         if manifest.get("mutation") != entry.get("mutation"):
             raise ManifestError(f"{exp_id}: mutation differs from the preregistered config diff")
+
+    if manifest.get("condition") != entry.get("condition"):
+        raise ManifestError(f"{exp_id}: condition differs from the preregistered setting")
 
     expected_seeds = list(entry.get("seeds") or prereg["seeds"])
     if list(manifest.get("seeds") or []) != expected_seeds:
