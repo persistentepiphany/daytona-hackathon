@@ -1,8 +1,12 @@
 # Demo — exact commands
 
-Two paths exist. The **calibration path** is proven and is what you should demo
-unless the autonomous status below says otherwise. The **autonomous path** is the
-one with no hand-written experiment code in it.
+Everything runs from `main`. Two paths, both proven live:
+
+- **Calibration path** — grades a paper against a hand-written reference
+  implementation, with a sham twin and a hermeticity control. Use it to show the
+  grader is honest.
+- **Autonomous path** — the model writes the contract and the code; nothing about
+  the paper is hard-coded. Use it to show the pipeline needs no custom code.
 
 ## 0. Prerequisites
 
