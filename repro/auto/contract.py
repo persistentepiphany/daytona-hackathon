@@ -26,7 +26,9 @@ MANDATORY OUTPUT CONTRACT - a proposal that omits any of this is rejected unrun:
       "config_overrides": [<the --set strings>]}
    No other text on that final line.
 2. "files" MUST include "config.json" with a "data" object carrying a "dir" key,
-   plus one entry per claim id keyed by claim id.
+   plus one entry per claim, keyed by EXACTLY the claim ids given to you in the
+   user message. Do not invent your own claim ids: the runner invokes
+   train.py --claim <that id> and anything else fails unrun.
 3. "files" MUST include "smoke.sh": a fast end-to-end check (seconds, not
    minutes) that exercises the real code path and exits non-zero on failure.
 4. Build a virtualenv at ./venv and install dependencies into it, so

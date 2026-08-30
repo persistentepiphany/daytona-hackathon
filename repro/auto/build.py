@@ -25,10 +25,27 @@ def _redact(text: str, secrets: list[str]) -> str:
     return out
 
 
-def propose(provider, method_spec: str, feedback: list[dict]) -> dict:
+def claim_spec(claims: list[dict]) -> str:
+    """The claim ids and their settings, with every reported value stripped.
+
+    The Implementer must key config.json by the preregistered ids, so it has to
+    see them; it must not see what number it is aiming at, so reported_value and
+    any grading rule stay out.
+    """
+    visible = [{k: v for k, v in c.items()
+                if k in ("id", "metric", "condition", "model", "params")}
+               for c in claims]
+    return json.dumps(visible, indent=2)
+
+
+def propose(provider, method_spec: str, feedback: list[dict],
+            claims: list[dict] | None = None) -> dict:
     """One Implementer call under the augmented system prompt, validated on return."""
     system = implementer_system(implementer.SYSTEM)
     user = f"Method spec from the paper:\n{method_spec[:120000]}"
+    if claims:
+        user += ("\n\nconfig.json MUST be keyed by exactly these claim ids "
+                 f"(no reported values are shown, by design):\n{claim_spec(claims)}")
     if feedback:
         user += ("\n\nThe previous attempt did not pass. Structured feedback "
                  f"(no metric values by design):\n{json.dumps(feedback, indent=2)}")
@@ -38,7 +55,8 @@ def propose(provider, method_spec: str, feedback: list[dict]) -> dict:
 
 
 def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
-                   secrets: list[str], log=print) -> dict:
+                   secrets: list[str], claims: list[dict] | None = None,
+                   log=print) -> dict:
     """Drive the archaeology session to a smoke-passing state, or exhaust the cap.
 
     Returns {"ok": bool, "iterations": int, "attempts": [...], "last_feedback": ...}.
@@ -48,7 +66,7 @@ def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
     for i in range(1, MAX_ITERATIONS + 1):
         attempt = {"iteration": i}
         try:
-            proposal = propose(provider, method_spec, feedback)
+            proposal = propose(provider, method_spec, feedback, claims)
         except RoleError as e:
             attempt.update(stage="propose", error=_redact(str(e), secrets)[:600])
             attempts.append(attempt)
