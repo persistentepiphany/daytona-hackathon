@@ -32,13 +32,26 @@ POLICIES: dict[str, Policy] = {
     "data_stager": Policy(auto_stop=15, auto_pause=None, auto_delete=0, default_ttl=120),
     "gpu": Policy(auto_stop=None, auto_pause=None, auto_delete=0, default_ttl=90),
     "build": Policy(auto_stop=30, auto_pause=None, auto_delete=None, default_ttl=720),
-    # demo window: the preview must not idle out mid-demo; TTL 12h is the backstop
-    "build_demo": Policy(auto_stop=0, auto_pause=None, auto_delete=None, default_ttl=720),
+    # demo window: idle-stop after 3h so a forgotten preview stops holding org
+    # quota, but never mid-demo; TTL 12h is the backstop
+    "build_demo": Policy(auto_stop=180, auto_pause=None, auto_delete=None, default_ttl=720),
 }
 
 
 class LifecycleError(RuntimeError):
     pass
+
+
+# the org quota (measured: 10 GiB total sandbox memory) is the binding limit on
+# how many sandboxes exist at once; the provider phrases the refusal differently
+# depending on which ceiling is hit, so match the whole family
+QUOTA_MARKERS = ("quota", "limit", "exceed", "capacity", "insufficient",
+                 "no available", "too many")
+
+
+def is_quota_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(m in text for m in QUOTA_MARKERS)
 
 
 class Lifecycle:
@@ -80,6 +93,32 @@ class Lifecycle:
             "network_block_all": network_block_all,
         })
         return sandbox_id
+
+    def create_with_retry(self, kind: str, *, attempts: int = 20, wait_seconds: int = 60,
+                          on_wait=None, **kwargs) -> str:
+        """create(), but a quota refusal waits for a slot instead of failing the run.
+
+        Concurrent pipelines contend for the same org quota; whoever loses the
+        race queues rather than dying, and anything that is not a quota refusal
+        still raises immediately.
+        """
+        import time
+
+        for attempt in range(attempts):
+            try:
+                return self.create(kind, **kwargs)
+            except Exception as e:
+                last = attempt == attempts - 1
+                self.ledger.log_event(self.run_id, "sandbox_create_retry", {
+                    "kind": kind, "name": kwargs.get("name"), "exp_id": kwargs.get("exp_id"),
+                    "attempt": attempt + 1, "quota": is_quota_error(e), "error": str(e)[:300],
+                })
+                if last or not is_quota_error(e):
+                    raise
+                if on_wait:
+                    on_wait(attempt + 1, e)
+                time.sleep(wait_seconds)
+        raise LifecycleError("unreachable")  # pragma: no cover
 
     def fork(self, parent_id: str, name: str, exp_id: str | None = None) -> str:
         self.gates.require(self.run_id, "G1")

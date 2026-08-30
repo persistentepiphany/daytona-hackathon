@@ -17,6 +17,7 @@ import os
 import shutil
 import sys
 import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -51,7 +52,7 @@ def log(msg):
 
 
 def main() -> int:
-    run_id = f"e2e-{int(time.time())}"
+    run_id = f"e2e-{int(time.time())}-{uuid.uuid4().hex[:6]}"
     run_dir = RUN_ROOT / run_id
     export = run_dir / "export"
     (export / "evidence").mkdir(parents=True, exist_ok=True)

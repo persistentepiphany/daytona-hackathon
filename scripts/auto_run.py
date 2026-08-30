@@ -7,6 +7,10 @@ rather than `cal.build_environment`. Everything downstream - the P2 executor, th
 P3 grader, the controls - is the existing machinery, untouched.
 
 Usage: python scripts/auto_run.py [paper_dir] [--seeds 17,41,93]
+
+Safe to run several at once, one process per paper: run ids are unique per
+process, the ledger is shared through WAL, and sandbox creates queue on the org
+quota instead of failing. scripts/fanout.py drives that fan-out.
 """
 
 import argparse
@@ -15,6 +19,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -51,6 +56,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("paper_dir", nargs="?", default="papers/fashion-mnist")
     ap.add_argument("--seeds", default="17,41,93")
+    ap.add_argument("--base-snapshot", default="daytona-medium",
+                    help="base for S0 (daytona-small 1cpu/1GiB/3GiB disk fits three "
+                         "concurrent runs in the org quota; daytona-medium is 2/4/8)")
+    ap.add_argument("--max-experiment-workers", type=int, default=1,
+                    help="experiments in flight within this run; the org quota is "
+                         "the real ceiling, so leave at 1 when running several papers")
     args = ap.parse_args()
 
     secrets = [s for s in (env_key("ZAI_API_KEY", "ZAI_API"),
@@ -61,7 +72,7 @@ def main() -> int:
     paper = json.loads((paper_dir / "paper.json").read_text())
     paper_text = (paper_dir / "paper-extract.txt").read_text()
 
-    run_id = f"auto-{int(time.time())}"
+    run_id = f"auto-{int(time.time())}-{uuid.uuid4().hex[:6]}"
     run_dir = RUN_ROOT / run_id
     (run_dir / "evidence").mkdir(parents=True, exist_ok=True)
     ledger = Ledger(RUN_ROOT / "ledger.db")
@@ -102,7 +113,7 @@ def main() -> int:
     log(f"G1 prereg frozen {prereg_hash[:16]} (seeds {seeds})")
 
     # ---- Implementer -> archaeology ---------------------------------------
-    arch = ArchaeologySession(life, adapter, ledger, run_id, base_snapshot="daytona-medium")
+    arch = ArchaeologySession(life, adapter, ledger, run_id, base_snapshot=args.base_snapshot)
     build_result, s0, frozen = None, None, None
     try:
         log(f"P1 implementer build loop (cap {MAX_ITERATIONS} rounds)")
@@ -137,6 +148,10 @@ def main() -> int:
                                  "NOT RUN - build never passed the smoke gate", ledger,
                                  paper.get("title", args.paper_dir), code_absence=certificate)
         (run_dir / "report.md").write_text(report)
+        (run_dir / "handle.json").write_text(json.dumps(
+            {"run_id": run_id, "run_dir": str(run_dir), "s0_snapshot": None,
+             "prereg_hash": prereg_hash, "autonomous": True,
+             "paper_dir": str(paper_dir), "failed_at": "P1"}, indent=2))
         log(f"deliverable written despite failure: {run_dir} "
             f"(candidate source under candidate/)")
         return 2
@@ -150,10 +165,9 @@ def main() -> int:
              build_manifest(doc, prereg_hash, e["experiment_id"],
                             budget={"ttl_min": TTL_MIN, "cpu": 2, "memory_gib": 4}))
             for e in doc["experiments"]]
-    # one at a time: the Ledger's SQLite connection is not safe to share across
-    # threads, and two concurrent experiments raced it into
-    # 'cannot commit - no transaction is active'
-    with cf.ThreadPoolExecutor(max_workers=1) as pool:
+    # the ledger race that forced serialization here was Budget writing outside the
+    # ledger lock; that is fixed, so this is now a quota decision, not a safety one
+    with cf.ThreadPoolExecutor(max_workers=max(1, args.max_experiment_workers)) as pool:
         futures = {pool.submit(run_experiment, prereg=doc, prereg_hash=prereg_hash,
                                manifest=m, **common): eid for eid, m in jobs}
         for fut in cf.as_completed(futures):
@@ -187,7 +201,11 @@ def main() -> int:
     (run_dir / "report.md").write_text(report)
     handle = {"run_id": run_id, "run_dir": str(run_dir), "s0_snapshot": s0,
               "prereg_hash": prereg_hash, "autonomous": True,
+              "paper_dir": str(paper_dir),
               "build_iterations": build_result["iterations"]}
+    # the per-run handle is authoritative; latest.json stays for the single-run
+    # path but is last-writer-wins when several pipelines finish together
+    (run_dir / "handle.json").write_text(json.dumps(handle, indent=2))
     (RUN_ROOT / "latest.json").write_text(json.dumps(handle, indent=2))
     log(f"done: {run_dir}")
     return 0 if rows else 3

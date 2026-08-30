@@ -109,8 +109,11 @@ implementer round:
 
 One row short of a full table: `exp_svc` graded NOT ATTEMPTABLE because two
 concurrent experiments raced the ledger's SQLite connection into "cannot commit
-- no transaction is active". P2 now runs one experiment at a time (commit
-22403a0); the underlying ledger concurrency is still worth fixing.
+- no transaction is active". P2 was serialized as a stopgap (commit 22403a0); the
+underlying cause was `Budget.charge` reading and writing `ledger.db` outside the
+ledger's lock, which is now fixed, along with WAL mode for cross-process runs,
+unique run ids, quota-aware creates on every path, and `repro gc` to reclaim the
+quota that finished runs hold.
 
 ## Second paper: Best-scored Random Forest (`auto-1788101831`) — FAILED at P1
 

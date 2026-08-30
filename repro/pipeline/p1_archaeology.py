@@ -29,7 +29,9 @@ class ArchaeologySession:
         self.run_id = run_id
         self.lifecycle = lifecycle
         self.recipe: list[str] = ["#!/bin/bash", "# environment recipe, replayed top to bottom", "set -e"]
-        self.sandbox_id = lifecycle.create(
+        # queue on a quota refusal rather than killing the run at P1: with several
+        # pipelines in flight the archaeology boxes are what contend for slots
+        self.sandbox_id = lifecycle.create_with_retry(
             "archaeology", name=f"arch-{run_id}", snapshot=base_snapshot,
             volumes=volumes, ttl_minutes=ttl_minutes,
         )

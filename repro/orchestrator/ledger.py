@@ -15,6 +15,9 @@ import uuid
 from pathlib import Path
 
 
+BUSY_TIMEOUT_S = 30.0  # a contended cross-process write waits this long before raising
+
+
 def _locked(fn):
     @functools.wraps(fn)
     def wrapper(self, *args, **kwargs):
@@ -97,9 +100,16 @@ class LedgerError(RuntimeError):
 class Ledger:
     def __init__(self, path: str | Path):
         self.path = str(path)
-        self.lock = threading.RLock()  # one connection, serialized writes
-        self.db = sqlite3.connect(self.path, check_same_thread=False)
+        self.lock = threading.RLock()  # one connection, serialized writes in-process
+        self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=BUSY_TIMEOUT_S)
         self.db.row_factory = sqlite3.Row
+        # concurrent pipelines are separate processes sharing this file, and the
+        # RLock above only serializes threads: WAL lets a reader run while another
+        # process writes, and the busy timeout makes a contended write wait rather
+        # than raise 'database is locked'
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT_S * 1000)}")
+        self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
         self.db.commit()
 
@@ -261,6 +271,38 @@ class Ledger:
             "seeds": json.loads(att["seeds"]),
             "dataset_hashes": self.datasets_for(att["run_id"]),
         }
+
+    # budget --------------------------------------------------------------
+    @_locked
+    def sum_charges(self, run_id: str, kind: str) -> float:
+        row = self.db.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM budget_charges WHERE run_id=? AND kind=?",
+            (run_id, kind),
+        ).fetchone()
+        return float(row["total"])
+
+    @_locked
+    def add_charge(self, run_id: str, kind: str, amount: float, note: str | None = None) -> None:
+        self.db.execute(
+            "INSERT INTO budget_charges (run_id, kind, amount, note, created_at) VALUES (?,?,?,?,?)",
+            (run_id, kind, amount, note, time.time()),
+        )
+        self.db.commit()
+
+    # gates ---------------------------------------------------------------
+    @_locked
+    def add_gate(self, run_id: str, gate: str, approver: str) -> None:
+        self.db.execute(
+            "INSERT INTO gates (run_id, gate, approver, approved_at) VALUES (?,?,?,?)",
+            (run_id, gate, approver, time.time()),
+        )
+        self.db.commit()
+
+    @_locked
+    def has_gate(self, run_id: str, gate: str) -> bool:
+        return self.db.execute(
+            "SELECT 1 FROM gates WHERE run_id=? AND gate=?", (run_id, gate)
+        ).fetchone() is not None
 
     def close(self) -> None:
         self.db.close()

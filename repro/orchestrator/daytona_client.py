@@ -178,6 +178,31 @@ class DaytonaAdapter:
         except Exception:
             return False
 
+    def list_snapshots(self) -> list[dict]:
+        """Every snapshot in the org: {name, size_gb, created_at}. S0 snapshots are
+        never garbage-collected by the provider, so the GC needs to see them."""
+        out, page = [], 1
+        while True:
+            res = self.d.snapshot.list(page=page, limit=100)
+            items = getattr(res, "items", res) or []
+            for s in items:
+                out.append({"name": getattr(s, "name", None),
+                            "size_gb": getattr(s, "size", None),
+                            "state": str(getattr(s, "state", "")),
+                            "created_at": str(getattr(s, "created_at", ""))})
+            if len(items) < 100:
+                return out
+            page += 1
+
+    def list_sandboxes(self) -> list[dict]:
+        """Every sandbox in the org with the fields the GC decides on."""
+        return [{"id": b.id, "labels": dict(getattr(b, "labels", None) or {}),
+                 "state": str(getattr(b, "state", "")),
+                 "cpu": getattr(b, "cpu", None), "memory_gib": getattr(b, "memory", None),
+                 "disk_gib": getattr(b, "disk", None),
+                 "created_at": str(getattr(b, "created_at", ""))}
+                for b in self.d.list()]
+
     def snapshot_delete(self, name: str) -> None:
         self.d.snapshot.delete(self.d.snapshot.get(name))
 

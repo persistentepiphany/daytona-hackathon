@@ -69,6 +69,49 @@ def cmd_rerun(args) -> int:
     return 0
 
 
+def cmd_gc(args) -> int:
+    """Reclaim org quota held by finished runs: S0 snapshots and idle previews."""
+    from .orchestrator import gc as gcmod
+    from .orchestrator.daytona_client import DaytonaAdapter
+
+    adapter = DaytonaAdapter()
+    keep_runs = {r.strip() for r in (args.keep_run or "").split(",") if r.strip()}
+    snap_del, snap_keep = gcmod.plan_snapshots(
+        adapter.list_snapshots(), keep_runs=keep_runs,
+        keep_newest=args.keep_snapshots, min_age_hours=args.min_age_hours)
+    box_del, box_keep = gcmod.plan_sandboxes(
+        adapter.list_sandboxes(), keep_runs=keep_runs,
+        keep_newest_demo=args.keep_previews, min_age_hours=args.min_age_hours)
+    for s in snap_keep:
+        print(f"keep     snapshot {s['name']} ({s['reason']})")
+    for b in box_keep:
+        print(f"keep     sandbox  {b['id'][:12]} {b.get('labels')} ({b['reason']})")
+    freed = gcmod.reclaimed(snap_del, box_del)
+    for s in snap_del:
+        if args.dry_run:
+            print(f"would rm snapshot {s['name']} ({s.get('size_gb')} GB)")
+            continue
+        try:
+            adapter.snapshot_delete(s["name"])
+            print(f"deleted  snapshot {s['name']} ({s.get('size_gb')} GB)")
+        except Exception as e:  # noqa: BLE001 - report and continue
+            print(f"error    snapshot {s['name']}: {str(e)[:120]}")
+    for b in box_del:
+        if args.dry_run:
+            print(f"would rm sandbox  {b['id'][:12]} {b.get('labels')}")
+            continue
+        try:
+            adapter.delete(b["id"])
+            print(f"deleted  sandbox  {b['id'][:12]} {b.get('labels')}")
+        except Exception as e:  # noqa: BLE001
+            print(f"error    sandbox  {b['id'][:12]}: {str(e)[:120]}")
+    print(f"\n{'would reclaim' if args.dry_run else 'reclaimed'}: "
+          f"{freed['snapshots']} snapshots ({freed['snapshot_storage_gb']} GB storage), "
+          f"{freed['sandboxes']} sandboxes ({freed['memory_gib']} GiB memory, "
+          f"{freed['disk_gib']} GiB disk) of org quota")
+    return 0
+
+
 def cmd_report(args) -> int:
     from .orchestrator.ledger import Ledger
     from .pipeline.report import report_from_files
@@ -136,6 +179,17 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--evidence-root", default="runs")
     d.add_argument("--port", type=int, default=8600)
     d.set_defaults(fn=cmd_dashboard)
+
+    g = sub.add_parser("gc", help="reclaim org quota: stale S0 snapshots and idle previews")
+    g.add_argument("--keep-run", default="", help="comma-separated run ids to preserve")
+    g.add_argument("--keep-snapshots", type=int, default=1,
+                   help="how many of the newest S0 snapshots to keep (default 1)")
+    g.add_argument("--keep-previews", type=int, default=1,
+                   help="how many of the newest preview sandboxes to keep (default 1)")
+    g.add_argument("--min-age-hours", type=float, default=0.0,
+                   help="never touch anything younger than this")
+    g.add_argument("--dry-run", action="store_true")
+    g.set_defaults(fn=cmd_gc)
 
     p = sub.add_parser("report", help="render the verdict report from persisted artifacts")
     p.add_argument("--run-dir", required=True)

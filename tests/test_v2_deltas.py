@@ -323,7 +323,9 @@ def test_demo_window_preview_lifecycle_and_gated_push(stack):
                     demo_window=True)
     sid = result["sandbox_id"]
     spec = adapter.sandboxes[sid]["spec"]
-    assert spec.auto_stop_interval == 0 and spec.ttl_minutes == 720  # demo window: no idle stop, 12h TTL
+    # demo window: idle-stop at 3h so a forgotten preview stops holding org
+    # quota, never mid-demo; 12h TTL is still the backstop
+    assert spec.auto_stop_interval == 180 and spec.ttl_minutes == 720
     assert any(k == "get_preview_link" for k, _ in adapter.calls)
     assert any(k == "create_signed_preview_url" for k, _ in adapter.calls)
 

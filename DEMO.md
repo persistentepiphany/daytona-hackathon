@@ -90,5 +90,8 @@ model-written contract), `build.json` (the implementer round and the four files
 it wrote, by sha256), `verdicts.json`, `report.md`, `evidence/`.
 
 Known gap in this run: the second experiment (`exp_svc`) graded NOT ATTEMPTABLE
-because two concurrent experiments raced the ledger's SQLite connection. P2 is
-serialized as of commit 22403a0, so a rerun grades both rows.
+because two concurrent experiments raced the ledger's SQLite connection. P2 was
+serialized as of commit 22403a0 to work around it; the actual cause was `Budget`
+writing outside the ledger lock, now fixed, so `--max-experiment-workers` reopens
+in-run parallelism and several papers can run side by side via
+`scripts/fanout.py`.

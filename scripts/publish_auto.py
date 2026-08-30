@@ -5,6 +5,7 @@ takes the graded verdicts it left behind and deploys the same thin
 "what survived" app the calibration path deploys.
 """
 
+import argparse
 import json
 import os
 import sys
@@ -24,7 +25,13 @@ PAPER_TITLE = "Fashion-MNIST (arXiv:1708.07747) - autonomous run"
 
 
 def main() -> int:
-    handle = json.loads((RUN_ROOT / "latest.json").read_text())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run-dir", default=None,
+                    help="publish this run; defaults to latest.json, which is "
+                         "last-writer-wins when several pipelines ran together")
+    args = ap.parse_args()
+    handle_path = (Path(args.run_dir) / "handle.json") if args.run_dir else (RUN_ROOT / "latest.json")
+    handle = json.loads(handle_path.read_text())
     run_id = handle["run_id"]
     run_dir = Path(handle["run_dir"])
     verdicts = json.loads((run_dir / "verdicts.json").read_text())

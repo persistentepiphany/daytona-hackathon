@@ -6,8 +6,6 @@ the ledger, append-only, and can never be un-approved: follow-up work happens un
 a new prereg document, never by mutating an approved one.
 """
 
-import time
-
 from .ledger import Ledger
 
 GATES = ("G1", "G2", "G3", "P4")  # P4 approves the single adaptive round's prereg-002
@@ -27,20 +25,13 @@ class Gates:
         if gate != "G1" and not self.passed(run_id, "G1"):
             raise GateError(f"{gate} cannot be approved before G1")
         try:
-            self.ledger.db.execute(
-                "INSERT INTO gates (run_id, gate, approver, approved_at) VALUES (?,?,?,?)",
-                (run_id, gate, approver, time.time()),
-            )
-            self.ledger.db.commit()
+            self.ledger.add_gate(run_id, gate, approver)
         except Exception as e:
             raise GateError(f"gate {gate} already approved for {run_id}") from e
         self.ledger.log_event(run_id, "gate_approved", {"gate": gate, "approver": approver})
 
     def passed(self, run_id: str, gate: str) -> bool:
-        row = self.ledger.db.execute(
-            "SELECT 1 FROM gates WHERE run_id=? AND gate=?", (run_id, gate)
-        ).fetchone()
-        return row is not None
+        return self.ledger.has_gate(run_id, gate)
 
     def require(self, run_id: str, gate: str) -> None:
         if not self.passed(run_id, gate):

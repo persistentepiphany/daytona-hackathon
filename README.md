@@ -43,6 +43,21 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 8. `repro replay --ledger runs/calibration/ledger.db --attempt <att-id>` — replay resolution from the ledger.
 9. `repro report --run-dir runs/calibration/<run-id> --title "..."` — render the report from persisted artifacts.
 10. `repro build --run-dir runs/calibration/<run-id>` — deploy the what-survived page to a sandbox and print the preview URL.
+11. `.venv/bin/python scripts/fanout.py --all --concurrency 2` — run every paper under `papers/` through the autonomous pipeline at once (one process per paper) and print one verdict table per paper. `--gc-first` reclaims quota before launching; `--base-snapshot daytona-small` trades sandbox size for a third concurrent slot.
+12. `repro gc --dry-run` — show the org quota held by finished runs (stale `s0-*` snapshots and idle preview sandboxes); drop `--dry-run` to reclaim it. `--keep-run` pins a run whose S₀ must stay replayable, `--keep-previews N` keeps the newest N demo URLs alive.
+
+### Running several papers at once
+
+One OS process per paper is the supported shape: run ids carry a random suffix so
+two launches in the same second cannot collide, the shared ledger runs in WAL mode
+with a 30s busy timeout, and every sandbox create queues on a quota refusal instead
+of failing the run. The binding limit is the **org quota, not the code**: 10 GiB
+total sandbox memory against 4 GiB per `daytona-medium` S₀ box means two pipelines
+in flight (three on `daytona-small`). Two things silently spend that quota after a
+run ends — the `s0-<run_id>` snapshot each run freezes (~14.5 GB of registry
+storage apiece) and the P5 preview sandbox, which `kill_stray.py` deliberately
+preserves — so `repro gc` is what keeps the ceiling from creeping down over a day
+of runs.
 
 ## 5. Day-0 verification (live, against the event account)
 
@@ -52,7 +67,7 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 4. Volumes are created asynchronously (`pending_create` → `ready` in ~4s) and must be awaited before mounting; small-file write propagation between sandboxes measured at 0.9s. `VolumeMount` has no read-only flag, so dataset integrity is enforced by checksum re-verification before every run.
 5. `network_block_all=True` blocks everything, including package registries — so the hermeticity control is fully establishable on this account. Sandbox egress on the default tier is otherwise restricted to an allowlist (pypi, npm, github, huggingface reachable; UCI, Springer, arXiv reset) — dataset sourcing must fit that world or the org must be verified in the dashboard.
 6. GPU sandboxes must be ephemeral (`auto_delete_interval=0`). Creation is refused with "Organization doesn't have GPU credits" in both regions for RTX 5090 and RTX 4090 — even with a positive general credit balance. Daytona tracks GPU credits as a separate wallet line from general credits; allocating them is a dashboard (Wallet page) action the API key cannot perform. G2 stays dormant until that allocation happens; the probe in `scripts/day0_check.py` verifies it in under a minute once done.
-7. Concurrency: at least 6 concurrent 1 GiB sandboxes ran without error, but the binding limit is the organization quota of **10 GiB total sandbox memory** — with 4 GiB experiment sandboxes that means two at a time, so the executor runs a quota-aware pool and creates wait patiently for a slot instead of failing.
+7. Concurrency: at least 6 concurrent 1 GiB sandboxes ran without error, but the binding limit is the organization quota of **10 GiB total sandbox memory** — with 4 GiB experiment sandboxes that means two at a time, so every create (P1's archaeology box included) waits patiently for a slot instead of failing. Snapshots and preview sandboxes hold that quota indefinitely once a run ends, which is what `repro gc` reclaims.
 8. Parallel Search round-trip verified (HTTP 200 with results).
 9. The generated SDK clients ignore proxy environment variables; `daytona_client.enable_proxy_env()` patches all three client packages to honor `HTTPS_PROXY`/`SSL_CERT_FILE` (a no-op elsewhere). Control plane is `app.daytona.io`; exec/file operations travel via `proxy.app-eu.daytona.io` / `proxy.app-us.daytona.io`, which restrictive networks must also allow.
 10. Sandboxes execute as user `daytona` (`$HOME=/home/daytona`), not root.
