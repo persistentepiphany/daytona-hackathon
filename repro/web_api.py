@@ -11,10 +11,13 @@ import re
 import threading
 import time
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
+
+from . import ingest
 
 ROOT = Path(__file__).resolve().parents[1]
 PAPERS = ROOT / "papers"
@@ -211,26 +214,121 @@ STORE = JobStore()
 
 
 def list_papers() -> list[dict[str, Any]]:
-    out = []
-    if not PAPERS.is_dir():
-        return out
-    for d in sorted(PAPERS.iterdir()):
-        if not d.is_dir() or d.name.startswith("_"):
-            continue
-        meta_path = d / "paper.json"
-        extract = d / "paper-extract.txt"
-        if not extract.is_file():
-            continue
-        meta = _read_json(meta_path) or {"paper_id": d.name, "title": d.name}
-        out.append({
-            "slug": d.name,
-            "title": meta.get("title") or d.name,
-            "arxiv_id": meta.get("arxiv_id"),
-            "authors": meta.get("authors") or [],
-            "ready": meta_path.is_file() and (d / "code_absence.json").is_file(),
-            "chars": extract.stat().st_size,
-        })
-    return out
+    """Same manifest shape the Render API serves, so one client covers both."""
+    return ingest.list_papers(PAPERS)
+
+
+class IngestStore:
+    """Ingestion jobs: seconds-to-a-minute of work, kept off the run path."""
+
+    KEEP = 40
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.jobs: dict[str, dict[str, Any]] = {}
+        self._slots = threading.Semaphore(2)
+
+    def start(self, kind: str, label: str, work) -> dict[str, Any]:
+        ingest_id = uuid.uuid4().hex[:12]
+        record = {"ingest_id": ingest_id, "kind": kind, "label": label,
+                  "status": "queued", "created_at": time.time(), "log": [],
+                  "manifest": None, "error": None}
+        with self._lock:
+            self.jobs[ingest_id] = record
+            for stale in sorted(self.jobs.values(),
+                                key=lambda r: r["created_at"])[:-self.KEEP]:
+                self.jobs.pop(stale["ingest_id"], None)
+        threading.Thread(target=self._run, args=(ingest_id, work), daemon=True,
+                         name=f"ingest-{ingest_id}").start()
+        return {"ingest_id": ingest_id, "status": "queued", "label": label}
+
+    def _log(self, ingest_id: str, message: str) -> None:
+        line = f"[{time.strftime('%H:%M:%S')}] {message}"
+        print(line, flush=True)
+        with self._lock:
+            record = self.jobs.get(ingest_id)
+            if record is not None:
+                record["log"].append(line)
+                del record["log"][:-60]
+
+    def _update(self, ingest_id: str, **fields: Any) -> None:
+        with self._lock:
+            self.jobs[ingest_id].update(fields)
+
+    def _run(self, ingest_id: str, work) -> None:
+        with self._slots:
+            self._update(ingest_id, status="running", started_at=time.time())
+            try:
+                manifest = work(lambda msg: self._log(ingest_id, msg))
+            except ingest.IngestError as exc:
+                self._log(ingest_id, f"failed: {exc}")
+                self._update(ingest_id, status="failed", error=str(exc),
+                             ended_at=time.time())
+            except Exception as exc:  # noqa: BLE001 - never lose the thread silently
+                self._log(ingest_id, f"failed: {type(exc).__name__}: {exc}")
+                self._update(ingest_id, status="failed",
+                             error=f"{type(exc).__name__}: {exc}", ended_at=time.time())
+            else:
+                self._update(ingest_id, status="succeeded", manifest=manifest,
+                             ended_at=time.time())
+
+    def get(self, ingest_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            record = self.jobs.get(ingest_id)
+            return json.loads(json.dumps(record)) if record else None
+
+    def list(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return sorted((json.loads(json.dumps(r)) for r in self.jobs.values()),
+                          key=lambda r: r["created_at"], reverse=True)
+
+
+INGESTS = IngestStore()
+
+
+def start_arxiv_fetch(body: dict[str, Any]) -> dict[str, Any]:
+    query = (body.get("query") or body.get("arxiv") or body.get("message") or "").strip()
+    if not query:
+        raise ValueError("query is required (an arXiv id, URL or title)")
+    scan = body.get("scan_figures", True)
+    max_figures = max(0, min(int(body.get("max_figures") or 10), 20))
+
+    def work(log):
+        return ingest.ingest_arxiv(query, papers_dir=PAPERS, scan_figures=bool(scan),
+                                   max_figures=max_figures, log=log)
+
+    return INGESTS.start("arxiv", query, work)
+
+
+def start_pdf_upload(data: bytes, *, title: str | None = None,
+                     title_hint: str | None = None, scan_figures: bool = True,
+                     max_figures: int = 10) -> dict[str, Any]:
+    if not data:
+        raise ValueError("empty upload")
+    if not data.startswith(b"%PDF"):
+        raise ValueError("body is not a PDF")
+    if len(data) > ingest.MAX_PDF_BYTES:
+        raise ValueError("PDF exceeds the 40 MB cap")
+    label = (title or title_hint or "uploaded PDF").strip()
+    capped = max(0, min(max_figures, 20))
+
+    def work(log):
+        return ingest.ingest_pdf(data, papers_dir=PAPERS, title=title,
+                                 title_hint=title_hint, source="upload",
+                                 scan_figures=scan_figures, max_figures=capped,
+                                 log=log)
+
+    return INGESTS.start("upload", label, work)
+
+
+def read_figure(slug: str, name: str) -> bytes | None:
+    base = (PAPERS / slug).resolve()
+    if PAPERS.resolve() not in base.parents:
+        return None
+    target = (base / "figures" / name).resolve()
+    if base not in target.parents or not target.is_file():
+        return None
+    return target.read_bytes()
 
 
 def materialize_paper(*, text: str, title: str | None = None,
@@ -432,6 +530,15 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
         def _json(self, obj: Any, code: int = 200) -> None:
             self._send(json.dumps(obj).encode(), code=code)
 
+        def _query(self) -> dict[str, list[str]]:
+            return parse_qs(urlparse(self.path).query)
+
+        def _flag(self, name: str, default: bool) -> bool:
+            raw = (self._query().get(name) or [None])[0]
+            if raw is None:
+                return default
+            return raw.lower() not in ("0", "false", "no")
+
         def do_OPTIONS(self) -> None:  # noqa: N802
             self.send_response(204)
             self._cors()
@@ -443,7 +550,29 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
             if path in ("/api/health", "/health"):
                 return self._json({"ok": True, "service": "snapshot-repro-api"})
             if path == "/api/papers":
-                return self._json(list_papers())
+                rows = list_papers()
+                if not self._flag("detail", True):
+                    return self._json([r["paper_dir"] for r in rows])
+                return self._json(rows)
+            if path == "/api/papers/ingests":
+                return self._json(INGESTS.list())
+            if path.startswith("/api/papers/ingests/"):
+                record = INGESTS.get(path[len("/api/papers/ingests/"):].strip("/"))
+                if not record:
+                    return self._json({"error": "no such ingest"}, 404)
+                return self._json(record)
+            figure = re.match(r"^/api/papers/([^/]+)/figures/([^/]+)$", path)
+            if figure:
+                png = read_figure(figure.group(1), figure.group(2))
+                if png is None:
+                    return self._json({"error": "no such figure"}, 404)
+                return self._send(png, ctype="image/png")
+            if path.startswith("/api/papers/"):
+                slug = path[len("/api/papers/"):].strip("/")
+                d = PAPERS / slug
+                if "/" in slug or not (d / "paper.json").is_file():
+                    return self._json({"error": "no such paper"}, 404)
+                return self._json(ingest.manifest(d, papers_dir=PAPERS))
             if path == "/api/runs":
                 return self._json(STORE.list())
             if path.startswith("/api/runs/"):
@@ -458,11 +587,36 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             path = unquote(url.path)
             length = int(self.headers.get("Content-Length") or 0)
+            if length > ingest.MAX_PDF_BYTES + 4096:
+                return self._json({"error": "upload exceeds the 40 MB cap"}, 413)
             raw = self.rfile.read(length) if length else b"{}"
+
+            # the PDF arrives as raw bytes, not multipart, so the same request
+            # shape works through the express and edge proxies unchanged
+            if path == "/api/papers/upload":
+                explicit = (self._query().get("title") or [None])[0]
+                hint = self.headers.get("X-Paper-Title")
+                try:
+                    return self._json(start_pdf_upload(
+                        raw,
+                        title=explicit.strip() if explicit else None,
+                        title_hint=hint.strip() if hint else None,
+                        scan_figures=self._flag("scan_figures", True),
+                        max_figures=int((self._query().get("max_figures") or [10])[0]),
+                    ), 202)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
             try:
                 body = json.loads(raw.decode() or "{}")
             except json.JSONDecodeError:
                 return self._json({"error": "invalid json"}, 400)
+
+            if path == "/api/papers/fetch":
+                try:
+                    return self._json(
+                        start_arxiv_fetch(body if isinstance(body, dict) else {}), 202)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
 
             if path == "/api/runs":
                 try:

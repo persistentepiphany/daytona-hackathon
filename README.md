@@ -30,7 +30,8 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 5. `papers/fashion-mnist/` — calibration paper metadata, transcribed claims, ambiguity ledger.
 6. `scripts/` — `day0_check.py` (live account verification), `run_calibration_p1.py` (prereg → G1 → stage → archaeology → freeze → boot-verify), `run_calibration_p2.py` (experiments + sham + hermeticity → verdicts).
 7. `repro/telemetry.py`, `repro/logtap.py`, `repro/feed.py`, `repro/estimates.py` — the live feed (section 10): the event bus and its single redaction site, the sandbox log tap, the SSE endpoint and page, and the completion estimates.
-8. `tests/` — unit tests against an in-memory fake adapter plus env-key fallback; no network needed.
+8. `repro/ingest/` — paper intake (section 4a): `arxiv.py` (Atom metadata + PDF download), `pdf.py` (page text and figure-region crops), `figures.py` (the vision pass that reads diagrams and tables), `__init__.py` (writes the paper directory the pipeline consumes).
+9. `tests/` — unit tests against an in-memory fake adapter plus env-key fallback; no network needed.
 
 ## 4. Setup and usage
 
@@ -71,6 +72,58 @@ which prevents an idle service from being suspended. It can also be run manually
 the Actions tab. By default it targets `https://daytona-repro-api.onrender.com/healthz`;
 set the repository variable `RENDER_HEALTHCHECK_URL` to point at a renamed or different
 Render service without changing code.
+
+## 4a. Getting a paper in
+
+A paper directory is three files — `paper.json`, `paper-extract.txt`,
+`code_absence.json` — and `scripts/auto_run.py` reads nothing else. The five
+directories under `papers/` were written by hand; `repro.ingest` writes the same
+thing from an arXiv id or an uploaded PDF, so a paper nobody transcribed can be run.
+
+```
+repro fetch 1708.07747                      # arXiv id, URL, or title text
+repro fetch ./downloads/some-paper.pdf      # a local PDF
+repro fetch 1905.11028 --no-figures         # skip the vision pass
+repro papers                                # what the pipeline can be pointed at
+python scripts/auto_run.py papers/<slug>    # then run it, as with any other paper
+```
+
+What the scan does, in order:
+
+1. **Text.** Every page's text, via PyMuPDF (or pypdf where PyMuPDF is not
+   installed). Under 500 characters and intake refuses the paper rather than
+   handing the planner an empty extract — that is what a scanned PDF looks like,
+   and it needs OCR first.
+2. **Figures.** Each caption — `Figure`, `Table`, `Algorithm` — is matched to the
+   artwork touching it and that region is rendered to PNG at 150 dpi. Rendering the
+   region rather than pulling embedded images is what makes a vector diagram (TikZ,
+   matplotlib PDF output) come out as a picture, and it keeps axis labels, legends
+   and the caption inside the crop. Artwork belongs to exactly one caption, and a
+   caption at the foot of a page takes the head of the next one, which is how a
+   long results table is captured.
+3. **Readings.** Each crop goes to a vision model (`glm-4.5v` on Z.AI by default,
+   Anthropic as the backup) with instructions to transcribe what is printed and
+   infer nothing. The readings are appended to `paper-extract.txt` under a
+   `FIGURES AND DIAGRAMS` banner, each marked `[figure scan]`, so a number the
+   grader later traces is always attributable to either the paper's own prose or a
+   machine reading a picture. The crops themselves are kept in `figures/` and
+   indexed in `figures.json`.
+
+Without a vision key the figures keep their captions and the run proceeds; the scan
+is never load-bearing. The code-existence certificate is deliberately left
+`NOT_SEARCHED` at intake — certifying is the run's gate to perform, and writing a
+`NOT_FOUND` here would forge the wedge criterion. `repro fetch --certify` runs the
+real Parallel search against the shared ledger when you want it done up front.
+
+The same intake is exposed over HTTP by both APIs, and by the dashboard's sidebar:
+
+| | |
+| --- | --- |
+| `POST /papers/fetch` | `{"query": "1708.07747"}` → `{"ingest_id"}` |
+| `POST /papers/upload` | the PDF as the raw request body (no multipart, so every proxy in front of the API passes it through), `X-Paper-Title` as a filename hint |
+| `GET /papers/ingests/<id>` | the ingest's status, log and, when it finishes, the paper manifest |
+| `GET /papers` | every paper with its figures and readings (`?detail=false` for the old bare-path list) |
+| `GET /papers/<slug>/figures/<name>` | one figure crop |
 
 ## 5. Day-0 verification (live, against the event account)
 

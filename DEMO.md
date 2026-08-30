@@ -67,6 +67,32 @@ browser never sees the bearer token. Runs serialize one-at-a-time on the API.
 
 Backend branch: `render-backend` (auto-deploys). `main` stays the verified CLI path.
 
+## 3a. Adding a paper — arXiv or a PDF
+
+Nothing about the five committed papers is special: a paper directory is
+`paper.json`, `paper-extract.txt` and `code_absence.json`, and `repro.ingest`
+writes those from an arXiv id or a PDF. From the CLI:
+
+```bash
+repro fetch 1708.07747                    # arXiv id, URL or title text
+repro fetch ./some-paper.pdf              # a local PDF
+repro papers                              # what the pipeline can be pointed at
+python scripts/auto_run.py papers/<slug>  # then run it like any other paper
+```
+
+From the dashboard, the sidebar's **Add a paper** panel does the same thing —
+paste an arXiv id, press *Upload a PDF*, or drop a PDF anywhere on the panel. The
+thread then shows the scan as it happens: pages and characters extracted, every
+figure and table crop, and the vision model's reading of each one. *Run the
+pipeline on this paper* queues the run against that directory.
+
+The scan renders the *region* around each caption rather than pulling embedded
+images, so a vector diagram comes out as a picture and a results table splitting
+across a page break is captured whole. Readings are appended to
+`paper-extract.txt` marked `[figure scan]`, so the planner sees the diagrams and
+the numbers in the tables, and a graded number stays traceable to either the
+paper's prose or a machine reading a picture. README section 4a has the detail.
+
 ## 4. Dashboard and tests
 
 ```bash

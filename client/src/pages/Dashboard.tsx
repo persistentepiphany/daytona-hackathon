@@ -3,19 +3,29 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  Download,
   FileSearch,
   FolderSearch,
   GitBranch,
+  Image as ImageIcon,
   Plus,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import {
+  fetchFromArxiv,
   fetchHealth,
   fetchPapers,
   fetchRun,
   fetchRuns,
+  figureUrl,
   isActiveStatus,
+  isIngestActive,
+  pollIngest,
   startRun,
+  uploadPaper,
+  type FigureScan,
+  type IngestJob,
   type PaperSummary,
   type RunDetail,
   type RunSummary,
@@ -94,9 +104,147 @@ function VerdictTable({ rows }: { rows: VerdictRow[] }) {
   );
 }
 
+function FigureCard({ slug, figure }: { slug: string; figure: FigureScan }) {
+  const src = figureUrl(slug, figure.file);
+  return (
+    <li className="figure-card">
+      {src ? (
+        <a href={src} target="_blank" rel="noreferrer">
+          <img src={src} alt={`${figure.label} from the paper`} loading="lazy" />
+        </a>
+      ) : (
+        <div className="figure-missing">
+          <ImageIcon size={15} /> no crop
+        </div>
+      )}
+      <div className="figure-body">
+        <p className="figure-label">
+          {figure.label} <span>page {figure.page}</span>
+        </p>
+        {figure.caption && <p className="figure-caption">{figure.caption}</p>}
+        {figure.reading ? (
+          <p className="figure-reading">
+            <strong>Figure scan.</strong> {figure.reading}
+          </p>
+        ) : (
+          <p className="figure-reading figure-reading-off">
+            Not read: {figure.error || "no reading"}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function PaperScanCard({
+  job,
+  busy,
+  onRun,
+}: {
+  job: IngestJob;
+  busy: boolean;
+  onRun: (paper: PaperSummary) => void;
+}) {
+  const paper = job.manifest;
+  const active = isIngestActive(job);
+  const figures = paper?.figures || [];
+  const read = figures.filter((f) => f.scanned).length;
+
+  return (
+    <>
+      <Activity
+        icon={<Download size={15} />}
+        title={job.kind === "arxiv" ? "arXiv fetch" : "PDF upload"}
+        detail={`${job.status} · ${job.label}`}
+        defaultOpen={active || job.status === "failed"}
+      >
+        <div className={`tool-detail ${active ? "tool-running" : ""}`}>
+          {active && <span className="pulse-dot" />}
+          <code>{job.log.length ? job.log[job.log.length - 1] : "queued"}</code>
+        </div>
+        {job.log.length > 1 && <pre className="run-log">{job.log.join("\n")}</pre>}
+      </Activity>
+
+      {job.status === "failed" && (
+        <div className="assistant-response">
+          <p className="error-copy">{job.error || "ingest failed"}</p>
+        </div>
+      )}
+
+      {paper && (
+        <>
+          <Activity
+            icon={<FileSearch size={15} />}
+            title="Paper scan"
+            detail={`${paper.pages ?? "?"} pages · ${Math.round((paper.chars || 0) / 1000)}k chars · ${figures.length} figures (${read} read)`}
+            defaultOpen
+          >
+            <div className="scan-summary">
+              <p className="scan-title">{paper.title}</p>
+              {!!paper.authors?.length && (
+                <p className="reasoning-copy">{paper.authors.join(", ")}</p>
+              )}
+              <dl className="scan-facts">
+                <div>
+                  <dt>Paper dir</dt>
+                  <dd>
+                    <code>{paper.paper_dir}</code>
+                  </dd>
+                </div>
+                {paper.arxiv_id && (
+                  <div>
+                    <dt>arXiv</dt>
+                    <dd>
+                      <a href={paper.abs_url || `https://arxiv.org/abs/${paper.arxiv_id}`} target="_blank" rel="noreferrer">
+                        {paper.arxiv_id}
+                      </a>
+                    </dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Code search</dt>
+                  <dd>{paper.code_absence || "—"}</dd>
+                </div>
+              </dl>
+              {paper.abstract && <p className="reasoning-copy scan-abstract">{paper.abstract}</p>}
+            </div>
+          </Activity>
+
+          {!!figures.length && (
+            <Activity
+              icon={<ImageIcon size={15} />}
+              title="Diagrams and tables"
+              detail={`${figures.length} extracted · ${read} read by the vision model`}
+              defaultOpen={read > 0}
+            >
+              <ul className="figure-grid">
+                {figures.map((figure) => (
+                  <FigureCard key={figure.index} slug={paper.slug} figure={figure} />
+                ))}
+              </ul>
+            </Activity>
+          )}
+
+          <div className="assistant-response">
+            <p>
+              The paper is staged at <code>{paper.paper_dir}</code>. Figure readings are folded
+              into <code>paper-extract.txt</code>, so the planner sees the diagrams and tables
+              alongside the prose.
+            </p>
+            <button className="run-paper-button" type="button" disabled={busy} onClick={() => onRun(paper)}>
+              Run the pipeline on this paper
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 type ThreadMessage =
   | { kind: "user"; text: string; at: string }
-  | { kind: "assistant"; jobId: string; prompt: string; at: string };
+  | { kind: "assistant"; jobId: string; prompt: string; at: string }
+  | { kind: "scan"; ingestId: string; job: IngestJob; at: string };
 
 function clock(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -113,7 +261,11 @@ export default function Dashboard() {
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addQuery, setAddQuery] = useState("");
+  const [ingesting, setIngesting] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,7 +321,12 @@ export default function Dashboard() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [thread, activeRun?.logs.length, activeRun?.status]);
 
-  async function submit(text: string, paperSlug?: string | null) {
+  async function submit(
+    text: string,
+    paperSlug?: string | null,
+    paperDir?: string | null,
+    title?: string,
+  ) {
     const trimmed = text.trim();
     if (!trimmed && !paperSlug) return;
     setError(null);
@@ -180,9 +337,14 @@ export default function Dashboard() {
     ]);
     setMessage("");
     try {
+      const slug = paperSlug || selectedPaper || undefined;
       const started = await startRun({
         message: trimmed || undefined,
-        paper_slug: paperSlug || selectedPaper || undefined,
+        paper_slug: slug,
+        // an ingested paper is not in the client's alias table, so its directory
+        // is passed through rather than guessed from the message
+        paper_dir: paperDir || (slug ? papers.find((p) => p.slug === slug)?.paper_dir : undefined),
+        title,
       });
       setActiveJobId(started.job_id);
       setThread((current) => [
@@ -202,6 +364,63 @@ export default function Dashboard() {
     }
   }
 
+  /** Drive one ingest to a terminal state, streaming its log into the thread. */
+  async function runIngest(label: string, begin: () => Promise<IngestJob>) {
+    setError(null);
+    setIngesting(true);
+    setThread((current) => [...current, { kind: "user", text: label, at: clock() }]);
+    try {
+      let job = await begin();
+      const at = clock();
+      setThread((current) => [
+        ...current,
+        { kind: "scan", ingestId: job.ingest_id, job, at },
+      ]);
+      const update = (next: IngestJob) =>
+        setThread((current) =>
+          current.map((item) =>
+            item.kind === "scan" && item.ingestId === next.ingest_id
+              ? { ...item, job: next }
+              : item,
+          ),
+        );
+      while (isIngestActive(job)) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        job = await pollIngest(job.ingest_id);
+        update(job);
+      }
+      if (job.manifest) {
+        setPapers(await fetchPapers());
+        setSelectedPaper(job.manifest.slug);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIngesting(false);
+    }
+  }
+
+  function addFromArxiv() {
+    const query = addQuery.trim();
+    if (!query || ingesting) return;
+    setAddQuery("");
+    void runIngest(`Fetch from arXiv: ${query}`, () => fetchFromArxiv(query));
+  }
+
+  function addFromFile(file: File | null | undefined) {
+    if (!file || ingesting) return;
+    if (!/\.pdf$/i.test(file.name)) {
+      setError("Upload a PDF — that is what the scanner reads.");
+      return;
+    }
+    void runIngest(`Upload ${file.name}`, () => uploadPaper(file));
+  }
+
+  function runPaper(paper: PaperSummary) {
+    setSelectedPaper(paper.slug);
+    void submit(`Reproduce ${paper.title}`, paper.slug, paper.paper_dir, paper.title);
+  }
+
   function sendMessage(event: React.FormEvent) {
     event.preventDefault();
     void submit(message, selectedPaper);
@@ -213,6 +432,7 @@ export default function Dashboard() {
     setSelectedPaper(null);
     setThread([]);
     setError(null);
+    setAddQuery("");
   }
 
   async function openJob(jobId: string) {
@@ -239,7 +459,8 @@ export default function Dashboard() {
     }
   }
 
-  const title = activeRun?.title || selectedPaper || "New analysis";
+  const selected = papers.find((paper) => paper.slug === selectedPaper);
+  const title = activeRun?.title || selected?.title || selectedPaper || "New analysis";
   const working = activeRun ? isActiveStatus(activeRun.status) : false;
 
   return (
@@ -255,6 +476,43 @@ export default function Dashboard() {
         </button>
 
         <div className="sidebar-section">
+          <p>Add a paper</p>
+          <div className="add-paper">
+            <input
+              type="text"
+              value={addQuery}
+              placeholder="arXiv id, URL or title"
+              aria-label="arXiv id, URL or title"
+              disabled={ingesting}
+              onChange={(event) => setAddQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addFromArxiv();
+                }
+              }}
+            />
+            <button type="button" onClick={addFromArxiv} disabled={ingesting || !addQuery.trim()}>
+              <Download size={14} /> Fetch from arXiv
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={ingesting}>
+              <Upload size={14} /> Upload a PDF
+            </button>
+            <input
+              ref={fileRef}
+              className="sr-only"
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(event) => {
+                addFromFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            <small>{ingesting ? "Scanning…" : "Text and figures are scanned on arrival."}</small>
+          </div>
+        </div>
+
+        <div className="sidebar-section">
           <p>Papers</p>
           <nav aria-label="Papers">
             {papers.map((paper) => (
@@ -268,6 +526,16 @@ export default function Dashboard() {
                 }}
               >
                 {paper.title}
+                {(paper.source && paper.source !== "committed") || paper.figures?.length ? (
+                  <small className="run-status-chip">
+                    {[
+                      paper.source && paper.source !== "committed" ? paper.source : null,
+                      paper.figures?.length ? `${paper.figures.length} figures` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                ) : null}
               </button>
             ))}
             {!papers.length && <span className="conversation-link">No papers found</span>}
@@ -298,7 +566,25 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      <section className="dashboard-main" id="current">
+      <section
+        className={`dashboard-main ${dragging ? "is-dropping" : ""}`}
+        id="current"
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.files.length) return;
+          event.preventDefault();
+          setDragging(false);
+          addFromFile(event.dataTransfer.files[0]);
+        }}
+      >
         <header className="dashboard-header">
           <div>
             <p className="eyebrow dashboard-eyebrow">Evidence workspace</p>
@@ -328,15 +614,32 @@ export default function Dashboard() {
                 </div>
                 <div className="assistant-response">
                   <p>
-                    Pick a paper from the sidebar or type <code>reproduce fashion-mnist</code>.
-                    Snapshot queues a real Daytona run on the Render API (~7 min). Runs are
-                    serialized one at a time.
+                    Pick a paper from the sidebar, pull one in from arXiv, or drop a PDF
+                    anywhere on this panel. Snapshot extracts the text, crops every figure and
+                    table, reads them with a vision model, then queues a real Daytona run on the
+                    Render API (~7 min). Runs are serialized one at a time.
                   </p>
                 </div>
               </div>
             )}
 
             {thread.map((item, index) => {
+              if (item.kind === "scan") {
+                return (
+                  <div className="chat-message assistant-message" key={`s-${item.ingestId}`}>
+                    <div className="assistant-heading">
+                      <span className="assistant-mark">
+                        <Sparkles size={15} />
+                      </span>
+                      <span>Snapshot</span>
+                      <span className="message-meta">
+                        {item.job.status} · {item.at}
+                      </span>
+                    </div>
+                    <PaperScanCard job={item.job} busy={busy || working} onRun={runPaper} />
+                  </div>
+                );
+              }
               if (item.kind === "user") {
                 return (
                   <div className="chat-message user-message" key={`u-${index}`}>
@@ -462,21 +765,22 @@ export default function Dashboard() {
             placeholder={
               selectedPaper
                 ? `Reproduce ${selectedPaper}`
-                : "Type: reproduce fashion-mnist — or pick a paper"
+                : "Type: reproduce fashion-mnist — or add a paper from arXiv or a PDF"
             }
             rows={1}
-            disabled={busy || working}
+            disabled={busy || working || ingesting}
           />
           <button
             className="send-button"
             type="submit"
             aria-label="Send message"
-            disabled={busy || working || (!message.trim() && !selectedPaper)}
+            disabled={busy || working || ingesting || (!message.trim() && !selectedPaper)}
           >
             <ArrowUp size={18} />
           </button>
           <p>
-            Hits the Render API (one run at a time, ~7 min). <kbd>Enter</kbd> to send
+            Hits the Render API (one run at a time, ~7 min). <kbd>Enter</kbd> to send · drop a
+            PDF anywhere to scan it
           </p>
         </form>
       </section>

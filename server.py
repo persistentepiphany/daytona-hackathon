@@ -16,10 +16,12 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel
+
+from repro import ingest
 
 REPO = Path(__file__).resolve().parent
 RUN_ROOT = REPO / "runs" / "auto"
@@ -38,6 +40,13 @@ app.add_middleware(
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
 _q: "queue.Queue[str]" = queue.Queue()
+
+# Ingestion is minutes shorter than a run and must not sit behind one in the
+# queue, so it gets its own bounded pool rather than the single run worker.
+_ingests: dict[str, dict] = {}
+_ingest_lock = threading.Lock()
+_ingest_slots = threading.Semaphore(2)
+INGEST_KEEP = 40
 
 
 def require_token(authorization: str | None = Header(default=None)) -> None:
@@ -135,6 +144,142 @@ def _publish(log_path: Path) -> str | None:
     return urls[-1] if urls else None
 
 
+def _ingest_record(kind: str, label: str) -> dict:
+    ingest_id = uuid.uuid4().hex[:12]
+    record = {"ingest_id": ingest_id, "kind": kind, "label": label,
+              "status": "queued", "created_at": time.time(), "log": [],
+              "manifest": None, "error": None}
+    with _ingest_lock:
+        _ingests[ingest_id] = record
+        if len(_ingests) > INGEST_KEEP:
+            for stale in sorted(_ingests.values(), key=lambda r: r["created_at"])[:-INGEST_KEEP]:
+                _ingests.pop(stale["ingest_id"], None)
+    return record
+
+
+def _ingest_log(ingest_id: str, message: str) -> None:
+    line = f"[{time.strftime('%H:%M:%S')}] {message}"
+    print(f"ingest {ingest_id}: {message}", flush=True)
+    with _ingest_lock:
+        record = _ingests.get(ingest_id)
+        if record is not None:
+            record["log"].append(line)
+            del record["log"][:-60]
+
+
+def _ingest_update(ingest_id: str, **fields) -> None:
+    with _ingest_lock:
+        _ingests[ingest_id].update(fields)
+
+
+def _run_ingest(ingest_id: str, work) -> None:
+    with _ingest_slots:
+        _ingest_update(ingest_id, status="running", started_at=time.time())
+        try:
+            manifest = work(lambda msg: _ingest_log(ingest_id, msg))
+        except ingest.IngestError as exc:
+            _ingest_log(ingest_id, f"failed: {exc}")
+            _ingest_update(ingest_id, status="failed", error=str(exc),
+                           ended_at=time.time())
+        except Exception as exc:  # noqa: BLE001 - never lose the thread silently
+            _ingest_log(ingest_id, f"failed: {type(exc).__name__}: {exc}")
+            _ingest_update(ingest_id, status="failed",
+                           error=f"{type(exc).__name__}: {exc}", ended_at=time.time())
+        else:
+            _ingest_update(ingest_id, status="succeeded", manifest=manifest,
+                           ended_at=time.time())
+
+
+def _start_ingest(kind: str, label: str, work) -> dict:
+    record = _ingest_record(kind, label)
+    threading.Thread(target=_run_ingest, args=(record["ingest_id"], work),
+                     daemon=True, name=f"ingest-{record['ingest_id']}").start()
+    return {"ingest_id": record["ingest_id"], "status": "queued", "label": label}
+
+
+class FetchRequest(BaseModel):
+    query: str
+    scan_figures: bool = True
+    max_figures: int = 10
+
+
+@app.post("/papers/fetch", status_code=202, dependencies=[Depends(require_token)])
+def fetch_paper(req: FetchRequest) -> dict:
+    """Pull a paper in from arXiv by id, URL or title and scan it."""
+    query = (req.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    max_figures = max(0, min(req.max_figures, 20))
+
+    def work(log):
+        return ingest.ingest_arxiv(query, papers_dir=PAPERS,
+                                   scan_figures=req.scan_figures,
+                                   max_figures=max_figures, log=log)
+
+    return _start_ingest("arxiv", query, work)
+
+
+@app.post("/papers/upload", status_code=202, dependencies=[Depends(require_token)])
+async def upload_paper(request: Request, title: str | None = None,
+                       scan_figures: bool = True, max_figures: int = 10) -> dict:
+    """Ingest a PDF posted as the raw request body.
+
+    Raw bytes rather than multipart so the same call works through the Vercel edge
+    proxy, the express proxy and the local stdlib API without a form parser.
+    """
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty upload")
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="body is not a PDF")
+    if len(data) > ingest.MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDF exceeds the 40 MB cap")
+    hint = (request.headers.get("x-paper-title") or "").strip() or None
+    label = (title or hint or "uploaded PDF").strip()
+    capped = max(0, min(max_figures, 20))
+
+    def work(log):
+        return ingest.ingest_pdf(data, papers_dir=PAPERS, title=title,
+                                 title_hint=hint, source="upload",
+                                 scan_figures=scan_figures, max_figures=capped,
+                                 log=log)
+
+    return _start_ingest("upload", label, work)
+
+
+@app.get("/papers/ingests")
+def list_ingests() -> list[dict]:
+    with _ingest_lock:
+        return sorted(_ingests.values(), key=lambda r: r["created_at"], reverse=True)
+
+
+@app.get("/papers/ingests/{ingest_id}")
+def get_ingest(ingest_id: str) -> dict:
+    with _ingest_lock:
+        record = _ingests.get(ingest_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="no such ingest")
+    return record
+
+
+@app.get("/papers/{slug}")
+def get_paper(slug: str) -> dict:
+    paper_dir = _resolve_paper(f"papers/{slug}")
+    if not (paper_dir / "paper.json").is_file():
+        raise HTTPException(status_code=404, detail="no such paper")
+    return ingest.manifest(paper_dir, papers_dir=PAPERS)
+
+
+@app.get("/papers/{slug}/figures/{name}")
+def get_figure(slug: str, name: str) -> Response:
+    paper_dir = _resolve_paper(f"papers/{slug}")
+    target = (paper_dir / "figures" / name).resolve()
+    if paper_dir.resolve() not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="no such figure")
+    return Response(content=target.read_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 class RunRequest(BaseModel):
     paper_dir: str = "papers/fashion-mnist"
     seeds: str = "17,41,93"
@@ -156,9 +301,16 @@ def healthz() -> dict:
 
 
 @app.get("/papers")
-def papers() -> list[str]:
-    return sorted(f"papers/{p.name}" for p in PAPERS.iterdir()
-                  if p.is_dir() and (p / "paper.json").is_file())
+def papers(detail: bool = True):
+    """Every paper the pipeline can be pointed at.
+
+    `detail=false` returns the bare paper_dir list this endpoint used to return,
+    for any client pinned to the older shape.
+    """
+    rows = ingest.list_papers(PAPERS)
+    if not detail:
+        return [row["paper_dir"] for row in rows]
+    return rows
 
 
 @app.post("/runs", status_code=202, dependencies=[Depends(require_token)])

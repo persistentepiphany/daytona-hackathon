@@ -162,6 +162,52 @@ def cmd_build(args) -> int:
     return 0
 
 
+def cmd_fetch(args) -> int:
+    """Pull a paper in from arXiv or a local PDF and write its paper directory."""
+    from . import ingest
+
+    def log(msg: str) -> None:
+        print(msg, flush=True)
+
+    source = args.source.strip()
+    try:
+        local = Path(source)
+        if local.is_file():
+            manifest = ingest.ingest_pdf(
+                local.read_bytes(), papers_dir=args.papers_dir, title=args.title,
+                slug=args.slug, source="upload",
+                scan_figures=not args.no_figures, max_figures=args.max_figures, log=log)
+        else:
+            manifest = ingest.ingest_arxiv(
+                source, papers_dir=args.papers_dir,
+                scan_figures=not args.no_figures, max_figures=args.max_figures, log=log)
+        if args.certify:
+            ingest.certify_code_absence(Path(args.papers_dir) / manifest["slug"], log=log)
+            manifest = ingest.manifest(Path(args.papers_dir) / manifest["slug"],
+                                       papers_dir=args.papers_dir)
+    except ingest.IngestError as exc:
+        print(f"fetch failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(manifest, indent=2))
+    print(f"\nrun it: python scripts/auto_run.py {manifest['paper_dir']}", file=sys.stderr)
+    return 0
+
+
+def cmd_papers(args) -> int:
+    from . import ingest
+
+    rows = ingest.list_papers(args.papers_dir)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for row in rows:
+        figures = row["figures"]
+        scanned = sum(1 for f in figures if f.get("scanned"))
+        print(f"{row['paper_dir']:<52} {row['source']:<10} "
+              f"{len(figures)} fig ({scanned} read)  {row['title'][:48]}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="repro")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -219,6 +265,23 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--run-dir", required=True)
     b.add_argument("--title", default="calibration run")
     b.set_defaults(fn=cmd_build)
+
+    fe = sub.add_parser("fetch", help="ingest a paper from arXiv or a local PDF")
+    fe.add_argument("source", help="arXiv id/URL/title, or a path to a PDF")
+    fe.add_argument("--papers-dir", default="papers")
+    fe.add_argument("--title", default=None, help="override the extracted title")
+    fe.add_argument("--slug", default=None, help="override the generated directory name")
+    fe.add_argument("--max-figures", type=int, default=12)
+    fe.add_argument("--no-figures", action="store_true",
+                    help="skip the vision pass over extracted figures")
+    fe.add_argument("--certify", action="store_true",
+                    help="run the code-absence search now instead of at intake")
+    fe.set_defaults(fn=cmd_fetch)
+
+    pa = sub.add_parser("papers", help="list the papers the pipeline can be pointed at")
+    pa.add_argument("--papers-dir", default="papers")
+    pa.add_argument("--json", action="store_true")
+    pa.set_defaults(fn=cmd_papers)
 
     args = ap.parse_args(argv)
     return args.fn(args)

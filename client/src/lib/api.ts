@@ -4,14 +4,42 @@ import { DEMO_JOB_ID, DEMO_PAPER_DIRS, DEMO_REPORT, DEMO_TOTAL_MS, demoJob, isDe
 /** When the demo run was started this session; null means it has not been triggered yet. */
 let demoStartedAt: number | null = null;
 
+export type FigureScan = {
+  index: number;
+  page: number;
+  label: string;
+  caption: string;
+  file?: string | null;
+  scanned: boolean;
+  reading?: string | null;
+  error?: string | null;
+};
+
 export type PaperSummary = {
   slug: string;
   title: string;
   paper_dir: string;
   arxiv_id?: string;
+  abs_url?: string | null;
+  abstract?: string;
   authors: string[];
   ready: boolean;
   chars: number;
+  pages?: number | null;
+  source?: string;
+  code_absence?: string;
+  figures?: FigureScan[];
+};
+
+/** An arXiv fetch or a PDF upload, as it runs on the API. */
+export type IngestJob = {
+  ingest_id: string;
+  kind: "arxiv" | "upload" | string;
+  label: string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  log: string[];
+  manifest: PaperSummary | null;
+  error?: string | null;
 };
 
 export type RunSummary = {
@@ -229,21 +257,84 @@ export async function fetchHealth(): Promise<boolean> {
   }
 }
 
+function paperFromDir(paper_dir: string): PaperSummary {
+  const slug = paper_dir.replace(/^papers\//, "");
+  return {
+    slug,
+    paper_dir,
+    title: PAPER_TITLES[slug] || slug,
+    authors: [],
+    ready: true,
+    chars: 0,
+    figures: [],
+  };
+}
+
 export async function fetchPapers(): Promise<PaperSummary[]> {
-  const dirs = isDemoMode()
-    ? DEMO_PAPER_DIRS
-    : await parse<string[]>(await fetch("/api/papers"));
-  return dirs.map((paper_dir) => {
-    const slug = paper_dir.replace(/^papers\//, "");
-    return {
-      slug,
-      paper_dir,
-      title: PAPER_TITLES[slug] || slug,
-      authors: [],
-      ready: true,
-      chars: 0,
-    };
-  });
+  if (isDemoMode()) return DEMO_PAPER_DIRS.map(paperFromDir);
+  // an API deployed before paper ingest still answers with bare paper_dir strings
+  const rows = await parse<Array<string | PaperSummary>>(await fetch("/api/papers"));
+  return rows.map((row) =>
+    typeof row === "string"
+      ? paperFromDir(row)
+      : { ...row, title: row.title || PAPER_TITLES[row.slug] || row.slug, figures: row.figures || [] },
+  );
+}
+
+export async function fetchPaper(slug: string): Promise<PaperSummary> {
+  return parse<PaperSummary>(await fetch(`/api/papers/${encodeURIComponent(slug)}`));
+}
+
+/** URL of a figure crop the scan wrote next to the paper. */
+export function figureUrl(slug: string, file?: string | null): string | null {
+  if (!file) return null;
+  const name = file.replace(/^figures\//, "");
+  return `/api/papers/${encodeURIComponent(slug)}/figures/${encodeURIComponent(name)}`;
+}
+
+const INGEST_OFFLINE =
+  "Paper ingest needs the live API. The demo replays a committed run and cannot fetch new papers.";
+
+/** Start an arXiv fetch. Returns the ingest job to poll. */
+export async function fetchFromArxiv(query: string, maxFigures = 10): Promise<IngestJob> {
+  if (isDemoMode()) throw new Error(INGEST_OFFLINE);
+  const started = await parse<{ ingest_id: string }>(
+    await fetch("/api/papers/fetch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, max_figures: maxFigures }),
+    }),
+  );
+  return pollIngest(started.ingest_id);
+}
+
+/** Upload a PDF as raw bytes — no multipart, so every proxy in front of the API
+ *  passes the body through untouched. */
+export async function uploadPaper(file: File, maxFigures = 10): Promise<IngestJob> {
+  if (isDemoMode()) throw new Error(INGEST_OFFLINE);
+  const title = file.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
+  const started = await parse<{ ingest_id: string }>(
+    await fetch(`/api/papers/upload?max_figures=${maxFigures}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        // header is ASCII-only by spec; the title is a hint, not the record
+        "X-Paper-Title": title.replace(/[^\x20-\x7e]/g, "").slice(0, 180) || "Uploaded PDF",
+      },
+      body: file,
+    }),
+  );
+  return pollIngest(started.ingest_id);
+}
+
+export async function pollIngest(ingestId: string): Promise<IngestJob> {
+  return parse<IngestJob>(
+    await fetch(`/api/papers/ingests/${encodeURIComponent(ingestId)}`),
+  );
+}
+
+export function isIngestActive(job: IngestJob | null): boolean {
+  return !!job && (job.status === "queued" || job.status === "running");
 }
 
 export async function fetchRuns(): Promise<RunSummary[]> {
@@ -304,6 +395,7 @@ export function resolvePaperDir(input: {
 export async function startRun(body: {
   message?: string;
   paper_slug?: string;
+  paper_dir?: string;
   paper_text?: string;
   title?: string;
   seeds?: string;
@@ -323,10 +415,11 @@ export async function startRun(body: {
       "Paste-to-run needs the local API. On Render, pick a paper from the sidebar or type its name (e.g. fashion-mnist).",
     );
   }
-  const paper_dir = resolvePaperDir(body);
+  const paper_dir = body.paper_dir || resolvePaperDir(body);
   if (!paper_dir) {
     throw new Error(
-      "Name a known paper (fashion-mnist, best-scored-rf) or pick one from the sidebar.",
+      "Name a known paper (fashion-mnist, best-scored-rf), pick one from the sidebar, " +
+        "or add one from arXiv or a PDF.",
     );
   }
   const started = await parse<{ job_id: string; status: string; queue_depth?: number }>(
@@ -343,7 +436,7 @@ export async function startRun(body: {
   return {
     job_id: started.job_id,
     status: started.status,
-    title: titleForDir(paper_dir),
+    title: body.title || titleForDir(paper_dir),
     paper_slug: slugFromDir(paper_dir) || undefined,
   };
 }
