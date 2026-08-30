@@ -141,7 +141,7 @@ class Day0:
         mounts = [VolumeMount(volume_id=self.volume.id, mount_path="/vol")] if self.volume else None
         self.a = self.create_box("a", volumes=mounts)
         self.record("03a create-from-snapshot latency (container)", f"{self.a._day0_latency:.1f}s")
-        r = self.a.process.exec("echo day0-marker > /root/marker.txt && cat /root/marker.txt")
+        r = self.a.process.exec("echo day0-marker > $HOME/marker.txt && cat $HOME/marker.txt")
         assert "day0-marker" in (r.result or ""), r.result
         self.record("03b exec inside sandbox", "ok")
 
@@ -155,7 +155,7 @@ class Day0:
             child = self.a.fork(name=f"{self.label}-fork", timeout=300)
             dt = time.monotonic() - t0
             self.sandboxes.append(child)
-            r = child.process.exec("cat /root/marker.txt")
+            r = child.process.exec("cat $HOME/marker.txt")
             inherited = "day0-marker" in (r.result or "")
             self.record("04 fork", f"ok in {dt:.1f}s, state inherited={inherited}")
             self.daytona.delete(child, wait=True)
@@ -175,7 +175,7 @@ class Day0:
         self.probe_snapshot = name
         self.record("05a create_snapshot live (freeze)", f"ok in {dt:.1f}s")
         c = self.create_box("froms0", snapshot=name)
-        r = c.process.exec("cat /root/marker.txt")
+        r = c.process.exec("cat $HOME/marker.txt")
         self.record("05b boot-from-frozen-snapshot", f"{c._day0_latency:.1f}s, state preserved={'day0-marker' in (r.result or '')}")
         self.daytona.delete(c, wait=True)
         self.sandboxes.remove(c)

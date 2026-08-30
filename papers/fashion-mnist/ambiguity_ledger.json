@@ -1,0 +1,40 @@
+{
+  "paper_id": "fashion-mnist",
+  "entries": [
+    {
+      "id": "A1",
+      "question": "Which scikit-learn version produced Table 3? The paper does not state it (August 2017 suggests 0.19.x).",
+      "config_key": "env.sklearn_version",
+      "resolution": "Modern scikit-learn pinned at archaeology time and recorded in requirements.lock; drift absorbed by preregistered tolerances. Any claim that fails only because of version drift is reported as-is.",
+      "resolved_from_paper": false
+    },
+    {
+      "id": "A2",
+      "question": "Are pixel values fed raw (0-255) or scaled? The paper describes the data format but not the preprocessing for Table 3.",
+      "config_key": "data.scale",
+      "resolution": "Scaled to [0,1] by dividing by 255, the conventional choice; recorded as an explicit config key so an adaptive round can flip it.",
+      "resolved_from_paper": false
+    },
+    {
+      "id": "A3",
+      "question": "LogisticRegression multi_class=ovr semantics: modern scikit-learn removed the multi_class parameter and defaults to multinomial.",
+      "config_key": "models.C3.params",
+      "resolution": "Default multinomial used; difference historically within ~0.01 accuracy on this dataset; tolerance set accordingly.",
+      "resolved_from_paper": false
+    },
+    {
+      "id": "A4",
+      "question": "The five training-data shuffles have no stated seeds.",
+      "config_key": "seeds",
+      "resolution": "Seeds fixed in the preregistration; the claim is about the mean over shuffles, so exact seeds should not matter beyond run-to-run noise.",
+      "resolved_from_paper": false
+    },
+    {
+      "id": "A5",
+      "question": "Perceptron iteration count: the 2017-era default was 5 epochs; modern default is max_iter=1000 with tol-based stopping.",
+      "config_key": "models.C5.params",
+      "resolution": "Modern defaults used; Perceptron is the highest-variance model in the set, so its preregistered tolerance is the widest.",
+      "resolved_from_paper": false
+    }
+  ]
+}

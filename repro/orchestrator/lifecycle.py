@@ -23,8 +23,9 @@ class Policy:
 
 
 POLICIES: dict[str, Policy] = {
-    # archaeology box stays around (paused) as fallback root until S0 is verified
-    "archaeology": Policy(auto_stop=0, auto_pause=60, auto_delete=None, default_ttl=480),
+    # archaeology box stays up as fallback root until S0 is verified; auto-pause is
+    # VM/Windows-only, so containers rely on auto_stop 0 (disabled) + the TTL backstop
+    "archaeology": Policy(auto_stop=0, auto_pause=None, auto_delete=None, default_ttl=480),
     # experiments: orchestrator stops after evidence pull; stop triggers delete
     "experiment": Policy(auto_stop=0, auto_pause=None, auto_delete=0, default_ttl=120),
     "fork_child": Policy(auto_stop=0, auto_pause=None, auto_delete=0, default_ttl=120),

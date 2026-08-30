@@ -1,0 +1,10 @@
+{
+  "paper_id": "fashion-mnist",
+  "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms",
+  "authors": ["Han Xiao", "Kashif Rasul", "Roland Vollgraf"],
+  "arxiv_id": "1708.07747v2",
+  "pdf_url": "https://arxiv.org/pdf/1708.07747v2",
+  "pdf_sha256": "253b6ef70144cb56d13b4e67d3f8cafad42df78d5984265e0a6e4812ad1715ae",
+  "role": "calibration",
+  "notes": "Benchmark table (Table 3) reports test accuracy on Fashion-MNIST averaged over 5 training-data shuffles per classifier configuration. Claims below were transcribed from the paper PDF and cross-checked against the accompanying repository benchmark."
+}

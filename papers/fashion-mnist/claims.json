@@ -1,0 +1,65 @@
+{
+  "paper_id": "fashion-mnist",
+  "claims": [
+    {
+      "id": "C1",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.798,
+      "model": "DecisionTreeClassifier",
+      "params": {"criterion": "entropy", "max_depth": 10, "splitter": "best"},
+      "source_loc": "Table 3, DecisionTreeClassifier row 1"
+    },
+    {
+      "id": "C2",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.873,
+      "model": "RandomForestClassifier",
+      "params": {"n_estimators": 100, "criterion": "entropy", "max_depth": 100},
+      "source_loc": "Table 3, RandomForestClassifier row 1"
+    },
+    {
+      "id": "C3",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.841,
+      "model": "LogisticRegression",
+      "params": {"C": 1, "multi_class": "ovr", "penalty": "l2"},
+      "source_loc": "Table 3, LogisticRegression C=1 penalty=l2 row"
+    },
+    {
+      "id": "C4",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.511,
+      "model": "GaussianNB",
+      "params": {"priors": [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]},
+      "source_loc": "Table 3, GaussianNB row"
+    },
+    {
+      "id": "C5",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.782,
+      "model": "Perceptron",
+      "params": {"penalty": "l1"},
+      "source_loc": "Table 3, Perceptron penalty=l1 row"
+    },
+    {
+      "id": "C7",
+      "metric": "test_accuracy",
+      "dataset": "fashion-mnist",
+      "split": "test",
+      "reported_value": 0.789,
+      "model": "DecisionTreeClassifier",
+      "params": {"criterion": "entropy", "max_depth": 50, "splitter": "best"},
+      "source_loc": "Table 3, DecisionTreeClassifier row 3"
+    }
+  ]
+}
