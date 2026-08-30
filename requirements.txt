@@ -1,0 +1,5 @@
+daytona==0.207.0
+httpx>=0.27
+jsonschema>=4.21
+anthropic>=0.40
+pytest>=8

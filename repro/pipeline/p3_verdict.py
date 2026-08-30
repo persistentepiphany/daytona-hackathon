@@ -35,7 +35,9 @@ def judge_experiment(entry: dict, metrics: dict | None,
     if observed is None:
         return _row(entry, None, None, INCONCLUSIVE)
 
-    if rule["kind"] == "abs_tolerance":
+    if rule["kind"] in ("abs_tolerance", "k_se_tolerance"):
+        if rule["kind"] == "k_se_tolerance" and metrics.get("n_seeds", 0) < rule.get("min_replications", 1):
+            return _row(entry, observed, None, INCONCLUSIVE)
         delta = observed - rule["target"]
         if entry["type"] == "randomized_control":
             verdict = CONTROL_PASS if abs(delta) <= rule["tolerance"] else CONTROL_FAIL

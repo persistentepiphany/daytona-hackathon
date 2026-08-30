@@ -22,6 +22,27 @@ VERDICTS = (
 )
 
 
+def build_mc_rule(rule_id: str, target: float, reported_se: float,
+                  replications: int, k: float = 3.0) -> dict:
+    """Monte Carlo tolerance rule for simulation-table papers: the experiment must
+    run at least the paper's replication count, tolerance is k standard errors
+    (default 3), and reproduction is a distribution match over the seed sweep —
+    never bitwise equality."""
+    if reported_se <= 0 or replications < 1:
+        raise PreregError("mc rule needs a positive SE and replication count")
+    return {
+        "id": rule_id,
+        "kind": "k_se_tolerance",
+        "target": target,
+        "se": reported_se,
+        "k": k,
+        "tolerance": round(k * reported_se, 10),
+        "min_replications": replications,
+        "match": "distribution",
+        "aggregate": "mean",
+    }
+
+
 def canonical_json(obj) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
 

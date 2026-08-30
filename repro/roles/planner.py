@@ -7,15 +7,21 @@ the orchestrator never repairs proposals silently.
 """
 
 from ..orchestrator.prereg import EXPERIMENT_MENU
+from ..orchestrator.schemas import SchemaError, normalize_claim, validate_ambiguity
 from .base import LLMProvider, RoleError, extract_json
 
 SYSTEM = f"""You are the Planner in a preregistered paper-reproduction pipeline.
 You read a paper and propose an executable contract. You never see any code and
 never run anything. Output strictly one JSON object with keys:
-- "claims": list of {{"id", "metric", "dataset", "split", "reported_value", "model", "params", "source_loc"}}
-- "ambiguities": list of {{"id", "question", "config_key"}} — decisions the paper
-  leaves underdetermined, each mapped to a config key. Do not resolve them from
-  outside sources; unresolvable gaps become UNDER-CONSTRAINED findings.
+- "claims": list of {{"id", "metric", "condition", "reported_value", "model", "params", "source_loc"}}
+  where "condition" is the experimental setting as an object (e.g.
+  {{"dataset": ..., "split": ...}} or {{"n": 100, "contamination": 0.1,
+  "distribution": "normal", "replications": 1000}}).
+- "ambiguities": list of {{"id", "question", "config_key", "type"}} — decisions the
+  paper leaves underdetermined, each mapped to a config key, typed as one of
+  "unstated_choice", "equation_ambiguity", "version_dependent_default". Do not
+  resolve them from outside sources; unresolvable gaps become UNDER-CONSTRAINED
+  findings.
 - "experiments": list of {{"experiment_id", "claim_id", "type", "rule", "mutation"?}}
   where type is one of {list(EXPERIMENT_MENU)} and rule is
   {{"id", "kind": "abs_tolerance"|"direction", "target"?, "tolerance"?, "aggregate": "mean"}}.
@@ -25,9 +31,6 @@ never run anything. Output strictly one JSON object with keys:
 - "cost_estimate": {{"sandbox_hours", "notes"}}
 Pick claims that are executable on CPU within the stated budget. Be conservative:
 fewer, better-grounded claims beat coverage."""
-
-REQUIRED_CLAIM_FIELDS = ("id", "metric", "dataset", "split", "reported_value", "source_loc")
-
 
 def propose(provider: LLMProvider, paper_text: str, objective: str, depth: str) -> dict:
     user = (f"Objective: {objective}\nDepth: {depth}\n\nPaper text:\n{paper_text[:150000]}")
@@ -41,10 +44,11 @@ def validate_proposal(p: dict) -> None:
     if not claims:
         raise RoleError("planner proposed no claims")
     ids = set()
-    for c in claims:
-        for f in REQUIRED_CLAIM_FIELDS:
-            if f not in c:
-                raise RoleError(f"claim missing {f}: {c}")
+    for i, c in enumerate(claims):
+        try:
+            claims[i] = c = normalize_claim(c)
+        except SchemaError as e:
+            raise RoleError(str(e)) from e
         if c["id"] in ids:
             raise RoleError(f"duplicate claim id {c['id']}")
         ids.add(c["id"])
@@ -56,9 +60,12 @@ def validate_proposal(p: dict) -> None:
         if (e["type"] in ("ablation", "stronger_baseline", "randomized_control")
                 and not e.get("mutation", {}).get("config_key")):
             raise RoleError(f"{e.get('experiment_id')}: {e['type']} experiments need a config-diff mutation")
-    for a in p.get("ambiguities") or []:
-        if not a.get("config_key"):
-            raise RoleError(f"ambiguity without config key: {a}")
+    ambiguities = p.get("ambiguities") or []
+    for i, a in enumerate(ambiguities):
+        try:
+            ambiguities[i] = validate_ambiguity(a)
+        except SchemaError as e:
+            raise RoleError(str(e)) from e
     for cid in (p.get("tolerances") or {}):
         if cid not in ids:
             raise RoleError(f"tolerance for unknown claim {cid}")
