@@ -105,11 +105,13 @@ def test_the_progress_channel_is_parsed_but_never_echoed(ledger):
 
 def test_progress_falls_back_to_the_runner_line_on_an_older_s0(ledger):
     """An S0 frozen before the side channel existed still reports progress, because the
-    runner has always printed one line per seed."""
+    runner has always announced each seed. It announces a seed *starting*, so seeing
+    two means one has finished - reporting two would be reporting work not yet done."""
     c = telemetry.LogCoalescer(ledger.bus, RUN)
     c.track(ATT, total_seeds=3)
     c.feed(ATT, "stdout", "[runner] E001 seed=17\n")
     c.feed(ATT, "stdout", "[runner] E001 seed=41\n")
+    c.feed(ATT, "stdout", "[runner] E001 seed=93\n")
     settle(c)
     assert [p["done"] for p in chunks_of(ledger, "attempt.progress")] == [1, 2]
 
@@ -199,3 +201,27 @@ def test_start_returns_none_rather_than_raising_when_the_sandbox_refuses(ledger)
             raise RuntimeError("sandbox gone")
 
     assert logtap.start_log_tap(Refusing(), "sbx-x", ledger.bus, RUN, ATT, 1) is None
+
+
+def test_the_explicit_channel_wins_over_the_stdout_fallback(ledger):
+    """The runner prints its own seed lines to stdout and writes the side channel too.
+    Counting both makes progress run ahead of the work, which is how a first live run
+    reported four seeds done while the third was still running."""
+    c = telemetry.LogCoalescer(ledger.bus, RUN)
+    c.track(ATT, total_seeds=4)
+    c.feed(ATT, telemetry.PROGRESS_STREAM, "::progress 1/4\n")
+    c.feed(ATT, "stdout", "[runner] MICRO seed=2\n[runner] MICRO seed=3\n"
+                          "[runner] MICRO seed=4\n")
+    c.feed(ATT, telemetry.PROGRESS_STREAM, "::progress 2/4\n")
+    settle(c)
+    assert [p["done"] for p in chunks_of(ledger, "attempt.progress")] == [1, 2]
+
+
+def test_the_fallback_counts_distinct_seeds_not_lines(ledger):
+    """The runner prints a line when a seed starts and another when it finishes."""
+    c = telemetry.LogCoalescer(ledger.bus, RUN)
+    c.track(ATT, total_seeds=3)
+    c.feed(ATT, "stdout", "[runner] E1 seed=17\n[runner] E1 seed=17 done mean=0.8\n")
+    c.feed(ATT, "stdout", "[runner] E1 seed=41\n")
+    settle(c)
+    assert [p["done"] for p in chunks_of(ledger, "attempt.progress")] == [1]

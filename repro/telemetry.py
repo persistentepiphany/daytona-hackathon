@@ -316,8 +316,10 @@ def tapped_session(session, role: str = "implementer"):
 # ---------------------------------------------------------------------------
 
 _PROGRESS = re.compile(r"::progress\s+(\d+)\s*/\s*(\d+)")
-# fallback for an S0 frozen before the progress side channel existed: the runner has
-# always printed one of these per seed
+# Fallback for an S0 frozen before the progress side channel existed: the runner has
+# always announced each seed. Note it announces a seed *starting*, so the number
+# finished is one less than the number seen - counting announcements as completions
+# would report work that has not happened.
 _SEED_LINE = re.compile(r"^\[runner\].*\bseed=(\d+)", re.MULTILINE)
 
 PROGRESS_STREAM = "progress"
@@ -354,6 +356,8 @@ class LogCoalescer:
         self._totals: dict[str, int] = {}
         self._t0: dict[str, float] = {}
         self._done: dict[str, int] = {}
+        self._marked: set[str] = set()      # attempts that speak the ::progress channel
+        self._seeds: dict[str, set[str]] = {}   # distinct seeds seen via the fallback
         self._sent: dict[str, int] = {}
         self._capped: set[str] = set()
         self._cap_notice: set[str] = set()
@@ -415,11 +419,19 @@ class LogCoalescer:
 
     def _progress(self, attempt_id: str, text: str) -> None:
         """`::progress k/n` from the runner's side channel; the per-seed runner line is
-        the fallback for an S0 frozen before that channel existed."""
+        the fallback for an S0 frozen before that channel existed.
+
+        The two must not both count. Once an attempt has spoken the explicit channel it
+        is authoritative, and the fallback is ignored for the rest of the attempt -
+        otherwise the runner's own stdout races the side channel and the count runs
+        ahead of the work. The fallback itself counts distinct seeds, because the runner
+        prints more than one line per seed.
+        """
         with self._lock:
             total = self._totals.get(attempt_id)
             t0 = self._t0.get(attempt_id)
             prior = self._done.get(attempt_id, 0)
+            marked = attempt_id in self._marked
         if not total or t0 is None:
             return
         done = prior
@@ -427,16 +439,26 @@ class LogCoalescer:
         if marks:
             done = max(done, int(marks[-1][0]))
             total = int(marks[-1][1]) or total
-        else:
-            seeds = _SEED_LINE.findall(text)
+            marked = True
+        elif not marked:
+            seeds = set(_SEED_LINE.findall(text))
             if seeds:
-                done = prior + len(seeds)
+                with self._lock:
+                    known = self._seeds.setdefault(attempt_id, set())
+                    known |= seeds
+                    # the most recently announced seed is still running
+                    done = max(0, len(known) - 1)
         done = min(done, total)
         if done <= prior:
+            if marks:
+                with self._lock:
+                    self._marked.add(attempt_id)
             return
         with self._lock:
             self._done[attempt_id] = done
             self._totals[attempt_id] = total
+            if marks:
+                self._marked.add(attempt_id)
         elapsed = time.monotonic() - t0
         # measured: this attempt's own observed seed rate extrapolated over the seeds
         # it has left. Never a prior, never a model of a different attempt.

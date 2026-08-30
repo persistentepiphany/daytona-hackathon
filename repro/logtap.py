@@ -20,8 +20,9 @@ PROGRESS_FILE = "progress.jsonl"
 MARKER_FILE = ".repro_progress"
 
 # -n +1 starts at the first byte; -F keeps retrying a file that does not exist yet,
-# which it will not until the runner's first write
-TAIL = "tail -n +1 -F"
+# which stdout.log will not until the runner's first write. -s 0.1 matters: tail's
+# default re-check is one second, which alone put delivery over the latency budget.
+TAIL = "tail -n +1 -F -s 0.1"
 
 
 class LogTap:
