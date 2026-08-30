@@ -98,6 +98,192 @@ export const DEMO_REPORT = [
   "5. fashion_mnist - Datasets - https://www.tensorflow.org/datasets/catalog/fashion_mnist",
 ].join("\n");
 
+const REPO_URL = "https://github.com/persistentepiphany/daytona-hackathon";
+const RUN_PATH = `results/auto/${RUN_ID}`;
+
+/** The committed artifacts for this run, browsable on GitHub. */
+export const DEMO_REPO = {
+  name: "persistentepiphany/daytona-hackathon",
+  branch: "main",
+  url: REPO_URL,
+  runDirUrl: `${REPO_URL}/tree/main/${RUN_PATH}`,
+  files: [
+    { label: "report.md", url: `${REPO_URL}/blob/main/${RUN_PATH}/report.md` },
+    { label: "verdicts.json", url: `${REPO_URL}/blob/main/${RUN_PATH}/verdicts.json` },
+    { label: "prereg.json", url: `${REPO_URL}/blob/main/${RUN_PATH}/prereg.json` },
+    { label: "candidate/", url: `${REPO_URL}/tree/main/${RUN_PATH}/candidate` },
+  ],
+};
+
+/** The implementer's frozen S0 candidate, verbatim from the run's candidate/ dir. */
+export const DEMO_CODE: Array<{ name: string; body: string; url: string }> = [
+  {
+    name: "config.json",
+    url: `${REPO_URL}/blob/main/${RUN_PATH}/candidate/config.json`,
+    body: `{
+  "data": {
+    "dir": "localdata"
+  },
+  "dt_fashion_1": {
+    "model": "DecisionTreeClassifier",
+    "params": {
+      "criterion": "entropy",
+      "max_depth": 10,
+      "splitter": "best"
+    },
+    "repetitions": 5
+  },
+  "svc_fashion_1": {
+    "model": "SVC",
+    "params": {
+      "C": 10,
+      "kernel": "poly"
+    },
+    "repetitions": 5
+  }
+}`,
+  },
+  {
+    name: "dataio.py",
+    url: `${REPO_URL}/blob/main/${RUN_PATH}/candidate/dataio.py`,
+    body: `import os
+import numpy as np
+import gzip
+
+
+def _read_images(path):
+    with gzip.open(path, 'rb') as f:
+        data = np.frombuffer(f.read(), np.uint8, offset=16)
+    return data.reshape(-1, 28 * 28).astype(np.float32) / 255.0
+
+
+def _read_labels(path):
+    with gzip.open(path, 'rb') as f:
+        data = np.frombuffer(f.read(), np.uint8, offset=8)
+    return data.astype(np.int64)
+
+
+def load_split(data_dir, split):
+    if split == "train":
+        X = _read_images(os.path.join(data_dir, "train-images-idx3-ubyte.gz"))
+        y = _read_labels(os.path.join(data_dir, "train-labels-idx1-ubyte.gz"))
+    elif split == "test":
+        X = _read_images(os.path.join(data_dir, "t10k-images-idx3-ubyte.gz"))
+        y = _read_labels(os.path.join(data_dir, "t10k-labels-idx1-ubyte.gz"))
+    else:
+        raise ValueError(f"Unknown split: {split}")
+    return X, y`,
+  },
+  {
+    name: "train.py",
+    url: `${REPO_URL}/blob/main/${RUN_PATH}/candidate/train.py`,
+    body: `import argparse
+import json
+import time
+import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score
+
+import dataio
+
+
+def parse_overrides(args):
+    overrides = {}
+    for s in args.set:
+        if '=' in s:
+            k, v = s.split('=', 1)
+            overrides[k] = v
+    return overrides
+
+
+def apply_config(base_cfg, overrides):
+    cfg = json.loads(json.dumps(base_cfg))
+    for path, value in overrides.items():
+        parts = path.split('.')
+        d = cfg
+        for p in parts[:-1]:
+            if p not in d:
+                d[p] = {}
+            d = d[p]
+        d[parts[-1]] = value
+    return cfg
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--claim', type=str, required=True)
+    parser.add_argument('--seed', type=int, required=True)
+    parser.add_argument('--set', type=str, action='append', default=[])
+    args = parser.parse_args()
+
+    with open('config.json', 'r') as f:
+        base_cfg = json.load(f)
+
+    overrides = parse_overrides(args)
+    cfg = apply_config(base_cfg, overrides)
+    claim_cfg = cfg[args.claim]
+
+    data_dir = cfg['data']['dir']
+    X_train_full, y_train_full = dataio.load_split(data_dir, 'train')
+    X_test, y_test = dataio.load_split(data_dir, 'test')
+
+    model_name = claim_cfg['model']
+    params = claim_cfg['params']
+    n_reps = claim_cfg.get('repetitions', 1)
+
+    rng = np.random.default_rng(args.seed)
+    scores = []
+    start_time = time.time()
+
+    for i in range(n_reps):
+        # Shuffle as the paper requires: "The data shuffling job is
+        # therefore left to the algorithm developer."
+        indices = rng.permutation(len(X_train_full))
+        X_train = X_train_full[indices]
+        y_train = y_train_full[indices]
+
+        if model_name == 'DecisionTreeClassifier':
+            clf = DecisionTreeClassifier(**params, random_state=args.seed + i)
+        elif model_name == 'SVC':
+            clf = SVC(**params, random_state=args.seed + i)
+        else:
+            raise ValueError(f"Unknown model: {model_name}")
+
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+        scores.append(accuracy_score(y_test, y_pred))
+
+    result = {
+        "claim": args.claim,
+        "seed": args.seed,
+        "metric": "accuracy",
+        "value": np.mean(scores),
+        "train_seconds": time.time() - start_time,
+        "n_train": len(X_train_full),
+        "n_test": len(X_test),
+        "config_overrides": args.set
+    }
+    print(json.dumps(result))
+
+
+if __name__ == '__main__':
+    main()`,
+  },
+  {
+    name: "smoke.sh",
+    url: `${REPO_URL}/blob/main/${RUN_PATH}/candidate/smoke.sh`,
+    body: `#!/bin/bash
+set -e
+./venv/bin/python train.py --claim dt_fashion_1 --seed 42 --set data.dir=localdata > /tmp/smoke_out.json
+echo "Smoke test completed. Output:"
+tail -1 /tmp/smoke_out.json`,
+  },
+];
+
+/** The implementer freezes S0 at t=8s, so the code exists from that point on. */
+export const DEMO_CODE_AT_MS = 8_000;
+
 export function isDemoMode(): boolean {
   if (typeof window === "undefined") return false;
   const q = new URLSearchParams(window.location.search).get("demo");

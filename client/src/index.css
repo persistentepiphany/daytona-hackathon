@@ -358,6 +358,55 @@ kbd { border: 1px solid var(--line); padding: 1px 3px; }
   padding: 10px 12px;
   white-space: pre-wrap;
 }
+.code-file + .code-file { margin-top: 12px; }
+.code-file-name {
+  align-items: center;
+  color: var(--ink-soft);
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 10px;
+  gap: 4px;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+.code-file-name:hover { color: var(--ink); text-decoration: underline; }
+.repo-card {
+  border: 1px solid rgba(21, 23, 24, .12);
+  border-radius: 10px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+.repo-card-head {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  gap: 10px;
+  padding: 11px 13px;
+  text-decoration: none;
+}
+.repo-card-head:hover { background: rgba(21, 23, 24, .04); }
+.repo-card-head > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.repo-card-head strong { font-size: 12.5px; }
+.repo-card-head small { color: var(--ink-soft); font-size: 10.5px; }
+.repo-card-files {
+  border-top: 1px solid rgba(21, 23, 24, .1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px 13px;
+}
+.repo-card-files a {
+  background: rgba(21, 23, 24, .05);
+  border-radius: 5px;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  text-decoration: none;
+}
+.repo-card-files a:hover { background: rgba(21, 23, 24, .1); color: var(--ink); }
 .verdict-table-wrap { margin-top: 14px; overflow-x: auto; }
 .verdict-table {
   border-collapse: collapse;

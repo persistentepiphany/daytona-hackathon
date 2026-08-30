@@ -3,7 +3,10 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  Code,
+  ExternalLink,
   FileSearch,
+  FileText,
   FolderSearch,
   GitBranch,
   Plus,
@@ -400,6 +403,29 @@ export default function Dashboard() {
                     );
                   })}
 
+                  {!!detail?.code?.length && (
+                    <Activity
+                      icon={<Code size={15} />}
+                      title="Generated code (frozen S0)"
+                      detail={detail.code.map((f) => f.name).join(", ")}
+                      defaultOpen
+                    >
+                      {detail.code.map((file) => (
+                        <div className="code-file" key={file.name}>
+                          <a
+                            className="code-file-name"
+                            href={file.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {file.name} <ExternalLink size={10} />
+                          </a>
+                          <pre className="run-log">{file.body}</pre>
+                        </div>
+                      ))}
+                    </Activity>
+                  )}
+
                   {!!detail?.logs?.length && (
                     <Activity
                       icon={<FileSearch size={15} />}
@@ -430,6 +456,46 @@ export default function Dashboard() {
                       )}
                       {detail?.verdicts?.framing && (
                         <p className="reasoning-copy framing-copy">{detail.verdicts.framing}</p>
+                      )}
+                      {detail?.repo && (
+                        <section className="repo-card">
+                          <a
+                            className="repo-card-head"
+                            href={detail.repo.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <GitBranch size={16} />
+                            <span>
+                              <strong>{detail.repo.name}</strong>
+                              <small>
+                                {detail.repo.branch} · artifacts committed for {detail.run_id}
+                              </small>
+                            </span>
+                            <ExternalLink size={13} />
+                          </a>
+                          <div className="repo-card-files">
+                            {detail.repo.files.map((file) => (
+                              <a
+                                key={file.label}
+                                href={file.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {file.label}
+                              </a>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      {detail?.report && (
+                        <Activity
+                          icon={<FileText size={15} />}
+                          title="Reproduction report"
+                          detail="report.md"
+                        >
+                          <pre className="run-log">{detail.report}</pre>
+                        </Activity>
                       )}
                     </div>
                   )}

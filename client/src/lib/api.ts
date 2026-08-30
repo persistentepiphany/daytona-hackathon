@@ -1,5 +1,15 @@
 /** Client for the Render repro API — browser talks to /api/*, proxy strips prefix + injects bearer. */
-import { DEMO_JOB_ID, DEMO_PAPER_DIRS, DEMO_REPORT, DEMO_TOTAL_MS, demoJob, isDemoMode } from "./demo";
+import {
+  DEMO_CODE,
+  DEMO_CODE_AT_MS,
+  DEMO_JOB_ID,
+  DEMO_REPO,
+  DEMO_PAPER_DIRS,
+  DEMO_REPORT,
+  DEMO_TOTAL_MS,
+  demoJob,
+  isDemoMode,
+} from "./demo";
 
 /** When the demo run was started this session; null means it has not been triggered yet. */
 let demoStartedAt: number | null = null;
@@ -54,6 +64,8 @@ export type RunDetail = RunSummary & {
     degraded?: boolean;
   } | null;
   report?: string | null;
+  code?: Array<{ name: string; body: string; url: string }>;
+  repo?: typeof DEMO_REPO | null;
   error?: string | null;
   preview_url?: string | null;
   degraded?: boolean;
@@ -269,7 +281,11 @@ export async function fetchRun(jobId: string): Promise<RunDetail> {
   if (isDemoMode()) {
     const elapsed = demoStartedAt === null ? DEMO_TOTAL_MS : Date.now() - demoStartedAt;
     const detail = mapJob(demoJob(elapsed) as unknown as RemoteJob);
-    if (elapsed >= DEMO_TOTAL_MS) detail.report = DEMO_REPORT;
+    if (elapsed >= DEMO_CODE_AT_MS) detail.code = DEMO_CODE;
+    if (elapsed >= DEMO_TOTAL_MS) {
+      detail.report = DEMO_REPORT;
+      detail.repo = DEMO_REPO;
+    }
     return detail;
   }
   const job = await parse<RemoteJob>(await fetch(`/api/runs/${encodeURIComponent(jobId)}`));
