@@ -168,3 +168,74 @@ def test_row_ids_are_monotonic_under_threads(ledger):
     ids = [r["id"] for r in ledger.events_after(RUN, 0)]
     assert ids == sorted(ids) == list(range(1, 101))
     assert [r["id"] for r in ledger.events_after(RUN, 60)] == list(range(61, 101))
+
+
+# --- the vocabulary is a contract, not a convention ------------------------
+
+SPEC = {
+    "agent.action": {"role", "type", "summary"},
+    "agent.patch": {"role", "path", "added", "removed", "hunk", "evidence_path"},
+    "agent.observation": {"role", "exit", "tail"},
+    "log.chunk": {"attempt_id", "stream", "text"},
+    "attempt.state": {"attempt_id", "state"},
+    "attempt.progress": {"attempt_id", "done", "total", "eta_s"},
+    "gate.changed": {"gate", "state"},
+    "verdict.emitted": {"claim_id", "verdict", "attempt_id"},
+    "budget.tick": {"spent", "ceiling"},
+    "run.done": set(),
+}
+
+
+def test_the_vocabulary_is_exactly_the_declared_set():
+    """Closed means closed: a kind added here without being designed for is a kind the
+    page has no reducer for and the seal was never argued about."""
+    assert telemetry.KINDS == frozenset(SPEC)
+
+
+def test_producers_carry_the_fields_the_page_reduces_on(ledger):
+    """Every kind the running system emits, checked against the declared shape. A
+    payload missing a field renders as an empty row rather than failing loudly, so the
+    contract is asserted here instead."""
+    from repro.orchestrator.budget import Budget
+    from repro.orchestrator.gates import Gates
+
+    Gates(ledger).approve(RUN, "G1", "suite")
+    Budget(ledger, RUN, {"sandbox_minutes": 10}).charge("sandbox_minutes", 1)
+    attempt = ledger.start_attempt(RUN, "E001", "m" * 64, "snapshot", "s0",
+                                   "bash runner.sh E001", [1, 2])
+    ledger.bind_sandbox(attempt, "sbx-1")
+    ledger.finish_attempt(attempt, 0, None)
+    tap = telemetry.ActionTap(ledger.bus, RUN, role="implementer")
+    tap.around({"action": "write", "path": "train.py", "content": "x = 1\n"},
+               lambda: None)
+    telemetry.LogCoalescer(ledger.bus, RUN).close()
+    ledger.bus.emit(RUN, "log.chunk", {"attempt_id": attempt, "stream": "stdout",
+                                       "text": "hi"})
+    ledger.bus.emit(RUN, "attempt.progress", {"attempt_id": attempt, "done": 1,
+                                              "total": 2, "eta_s": 3.0})
+    ledger.bus.emit(RUN, "verdict.emitted", {"claim_id": "C1", "verdict": "NOT REPRODUCED",
+                                             "attempt_id": attempt})
+    ledger.bus.emit(RUN, "run.done", {})
+
+    seen = set()
+    for row in ledger.events_for(RUN):
+        if row["kind"] not in SPEC:
+            continue
+        payload = json.loads(row["payload"])
+        missing = SPEC[row["kind"]] - set(payload)
+        assert not missing, f"{row['kind']} is missing {missing}"
+        seen.add(row["kind"])
+    assert seen == set(SPEC), f"never exercised: {set(SPEC) - seen}"
+
+
+def test_display_tails_are_capped_inside_emit(ledger):
+    """The cap belongs to the bus, so no call site can over-send by forgetting it."""
+    tap = telemetry.ActionTap(ledger.bus, RUN, role="implementer")
+    tap.around({"action": "write", "path": "big.py", "content": "z = 1\n" * 5000},
+               lambda: type("R", (), {"exit_code": 0, "output": "q" * 9000})())
+    patch = json.loads(ledger.events_for(RUN, "agent.patch")[0]["payload"])
+    observation = json.loads(ledger.events_for(RUN, "agent.observation")[0]["payload"])
+    assert len(patch["hunk"]) <= telemetry.ActionTap.HUNK_LIMIT
+    assert len(observation["tail"]) <= telemetry.ActionTap.TAIL_LIMIT
+    # the full diff is an artifact, referenced rather than carried
+    assert patch["evidence_path"] is None or patch["evidence_path"].startswith("_patches/")

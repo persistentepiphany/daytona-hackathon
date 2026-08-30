@@ -136,7 +136,12 @@ def main() -> int:
             arch.verify_s0_boot(s0)
             log(f"S0 frozen: {s0} (recipe {frozen['recipe_sha'][:12]})")
         finally:
-            arch.teardown()
+            try:
+                arch.teardown()
+            except Exception as e:
+                # the archaeology box can already be gone by here; losing it must not
+                # abandon a run that has its S0
+                log(f"archaeology teardown: {str(e)[:120]}")
 
         # ---- P2 experiments ----------------------------------------------
         import concurrent.futures as cf

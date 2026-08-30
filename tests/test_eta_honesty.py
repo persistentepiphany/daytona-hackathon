@@ -39,24 +39,27 @@ def test_there_are_recorded_streams_to_check():
     assert FIXTURES, "no recorded streams in fixtures/feed/"
 
 
-@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
-def test_halfway_eta_is_within_fifteen_percent_of_actual(path):
+def test_halfway_eta_is_within_fifteen_percent_of_actual():
+    """Not every recorded stream contains a completed attempt - an archaeology-only
+    recording has none - so this aggregates across fixtures and insists that at least
+    one real attempt was actually checked."""
     checked = 0
-    for attempt, rows in progress_series(load(path)).items():
-        finished_at = rows[-1]["elapsed_s"]
-        halfway = next((r for r in rows if r["done"] * 2 >= r["total"]), None)
-        if halfway is None or halfway["eta_s"] is None:
-            continue
-        actual_remaining = finished_at - halfway["elapsed_s"]
-        if actual_remaining <= 0:
-            continue
-        error = abs(halfway["eta_s"] - actual_remaining) / actual_remaining
-        assert error <= TOLERANCE, (
-            f"{path.stem} {attempt}: at {halfway['done']}/{halfway['total']} the feed "
-            f"showed {halfway['eta_s']}s remaining, actual was "
-            f"{round(actual_remaining, 1)}s ({error:.0%} out)")
-        checked += 1
-    assert checked, f"{path.stem} carried no completed multi-seed attempt to check"
+    for path in FIXTURES:
+        for attempt, rows in progress_series(load(path)).items():
+            finished_at = rows[-1]["elapsed_s"]
+            halfway = next((r for r in rows if r["done"] * 2 >= r["total"]), None)
+            if halfway is None or halfway["eta_s"] is None:
+                continue
+            actual_remaining = finished_at - halfway["elapsed_s"]
+            if actual_remaining <= 0:
+                continue
+            error = abs(halfway["eta_s"] - actual_remaining) / actual_remaining
+            assert error <= TOLERANCE, (
+                f"{path.stem} {attempt}: at {halfway['done']}/{halfway['total']} the "
+                f"feed showed {halfway['eta_s']}s remaining, actual was "
+                f"{round(actual_remaining, 1)}s ({error:.0%} out)")
+            checked += 1
+    assert checked, "no recorded stream carried a completed multi-seed attempt"
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
@@ -68,11 +71,17 @@ def test_every_eta_is_a_measured_rate(path):
         assert payload["done"] >= 1 and payload["done"] <= payload["total"]
 
 
-@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
-def test_the_ceiling_was_never_exceeded(path):
+def test_the_ceiling_was_never_exceeded():
     """Recomputed at every attempt transition against what actually remained. The
     ceiling is enforced rather than predicted - TTL is charged before a sandbox exists
     and the budget refuses to overspend - so a breach would mean the bound is wrong."""
+    total_checks = 0
+    for path in FIXTURES:
+        total_checks += _ceiling_checks(path)
+    assert total_checks, "no recorded stream carried an attempt transition"
+
+
+def _ceiling_checks(path):
     events = load(path)
     end = events[-1]["t"]
     ttl_s, started, open_ = {}, {}, set()
@@ -94,7 +103,7 @@ def test_the_ceiling_was_never_exceeded(path):
             f"{path.stem}: at {now} the ceiling said {ceiling}s but the run had "
             f"{round(end - now, 1)}s left")
         checks += 1
-    assert checks, f"{path.stem} recorded no attempt transitions"
+    return checks
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)

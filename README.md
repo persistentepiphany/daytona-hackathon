@@ -177,7 +177,12 @@ assignments) happens inside `emit()` and nowhere else, so no call site can leak 
 forgetting to scrub. It is not behind the on/off flag — a run with the feed off must not
 write a leakier events table than one with it on.
 
-The held-out annex never appears. A held-out experiment streams its state and its
-progress but its output is replaced by a byte count, because its stdout carries the
-observed value the annex exists to withhold. The verifier is visible only as an
-`agent.action` saying its evidence bundle was delivered, and as the verdicts it produced.
+The annex's contents never appear: no event of any kind carries a held-out claim's
+reported value, its tolerance or its decision rule. Being precise about what the feed
+does show — a held-out experiment appears as an attempt, with its state and its seed
+progress, since the operator chose the split at G1 and the feed is theirs — but its
+output is replaced by a byte count, because its stdout carries the observed value the
+annex exists to withhold. Held-out claims are still scored only at P3, exactly as before.
+
+The verifier is visible only as an `agent.action` saying its evidence bundle was
+delivered, and as the verdicts it produced.

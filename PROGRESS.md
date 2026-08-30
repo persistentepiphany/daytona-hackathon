@@ -33,6 +33,99 @@ Note: no `ARCHITECTURE.md` file accompanied the message in this session; the v2 
 9. [x] T9 — Builder demo-window lifecycle + G3-gated push refusal
 10. [x] T10 — `scripts/day0.py` pass/fail report (user-local), `DAYTONA_LIVE=1` integration suite, `HANDBACK.md`
 
+11. [x] T12 — Live run feed (bus + closed vocabulary + SSE + page), verified live
+12. [x] T12b — Completion estimates (measured rates, simulated bands, enforced ceiling)
+
+## T12 / T12b — live feed and completion estimates
+
+Built on `t12-live-feed` off `main`. **Held on the branch, not merged** — acceptance
+item 1 is only partially covered by a live recording (see below) and the merge is the
+user's call. Additive by construction: `REPRO_TELEMETRY=0` restores pre-feature
+behavior exactly, and the suite is 47 pre-existing tests unmodified plus 88 new ones.
+
+### Where the brief and the repository disagreed
+
+1. **There is no `validate_and_execute`.** The action choke point is
+   `validate_action` / `apply_action` in `repro/orchestrator/actions.py`. `apply_action`
+   is where the producer sits; the dispatch body moved verbatim into `_dispatch` so the
+   diff is an insertion rather than a rewrite. `repro/calibration/fashion_mnist.py`
+   drives the archaeology session directly rather than through the choke point, so
+   `telemetry.tapped_session` wraps it and calls the same tap; a thread-local depth
+   guard stops an action arriving through both paths being counted twice.
+2. **`cal-1788095064` has no event history to replay.** `ledger.db` and `runs/` are
+   gitignored and `scripts/publish_results.py` deliberately does not publish evidence,
+   so the published run has prereg, verdicts and report and nothing else. Rather than
+   fabricate a stream for it, `scripts/record_calibration.py` records a fresh
+   calibration-shaped run live and the feed replays that. The published
+   `cal-1788095064` artifacts are untouched.
+3. **`runner.sh` is a two-line shim** generated at execution time; the seed loop is
+   `RUNNER_PY`. `::progress k/n` therefore lives there — and goes to a side channel
+   file, not to stdout. That is stronger than the brief asked for: `stdout.log` is
+   hashed into the attempt's evidence, so writing progress to it would have made
+   evidence differ between a watched run and an unwatched one. It does not.
+4. **The pinned SDK's synchronous `get_session_command_logs` has no callbacks.** The
+   async form does, with exactly the `on_stdout`/`on_stderr` signature the brief
+   describes, over a websocket. The tap runs it on a private event loop and falls back
+   to byte-offset polling of the buffered log if that socket cannot be established, so
+   all SDK fragility sits in one function. (That websocket is orchestrator-to-Daytona;
+   the page-to-server transport is SSE, as required.)
+5. **Fleet ETA is not an event.** The vocabulary is closed and has no kind for it, and a
+   derived number that changes every tick has no business in an append-only ledger, so
+   it is delivered as a non-ledger SSE `event: estimate` frame computed in the feed
+   layer.
+
+### What the live runs caught that the offline suite could not
+
+1. **The generated runner did not compile.** `RUNNER_PY` is a triple-quoted string, so
+   the progress line's `\n` became a real newline in the emitted `runner.py`. Nothing
+   in the suite executed that generated file, so it reached the sandbox intact and every
+   experiment failed there with a missing `metrics.json` — after S₀ had already been
+   built. `tests/test_runner_files.py` now compiles both generated sources and runs the
+   seed loop against a stub interpreter, including the assertion that stdout is
+   byte-identical with and without the progress marker.
+2. **`tail`'s default one-second re-check** put chunk delivery at ~740 ms, over the
+   latency budget. `-s 0.1` brings it to ~250 ms median.
+3. **Progress ran ahead of the work.** The per-seed stdout fallback counted the runner's
+   start and finish lines as two seeds, and raced the explicit `::progress` channel. The
+   channel now takes precedence once seen, and the fallback counts distinct seeds
+   announced minus the one still running — the runner announces a seed *starting*.
+
+### Acceptance
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Replay renders feed, grid, gates, verdicts | **partial** — see below |
+| 2 | Live micro-run, `log.chunk` ≤500 ms, progress per seed | **pass** — 259 ms median, 490 ms max, 4/4 seeds, sandbox deleted |
+| 3 | Scripted driver through the real choke point | **pass** — `scripts/feed_driver.py`, all three agent kinds |
+| 4 | Kill switch visible ≤2 s | **pass** — 1.31 s |
+| 5 | Resume via `Last-Event-ID`, no gaps or duplicates | **pass** — asserted on event ids |
+| 6 | Redaction canary; zero credential rows table-wide | **pass** |
+| 7 | Verifier seal; no annex content in payloads | **pass** — scope stated below |
+| 8 | ETA within ±15% at halfway; ceiling never exceeded | **pass** — 4% out at the halfway mark on the recorded run |
+| 9 | Existing suite green and unmodified; off-mode diff test | **pass** |
+| 10 | README "Live feed" section; this closeout | **pass** |
+
+On (1), replay is verified end-to-end by `tests/test_replay.py` against two streams
+recorded from live Daytona in `fixtures/feed/`: a 98-second archaeology recording
+(`agent.action`, `agent.patch` with real diffs, `agent.observation`, `gate.changed`,
+`budget.tick`) and the micro-run (`attempt.state`, `attempt.progress`, `log.chunk`,
+kill switch). Paced replay reproduces both in order through the real endpoint, a
+mid-stream reconnect resumes with no gap or duplicate, and every kind they carry has a
+reducer on the page. What is **not** covered by a live recording is `verdict.emitted`:
+the calibration recording aborted in `ArchaeologySession.teardown()` on a 404 for an
+already-removed sandbox — a pre-existing fragility, unrelated to this feature, which
+`scripts/record_calibration.py` now guards around rather than reaching into the
+archaeology module for. The run had already frozen S₀ (recipe `e7b334101d3d`, matching
+the published calibration) when it stopped. Verdict events are covered by
+`tests/test_additivity.py` on a fake run; a recording that carries them wants one more
+pass of `scripts/record_calibration.py --profile core`, roughly 20 minutes of live time.
+
+On (7), the assertion is stated precisely rather than loosely: no event of any kind
+carries a held-out claim's reported value, tolerance or rule, and across the T12
+vocabulary nothing from the annex document appears at all. A held-out experiment is
+still visible *as an attempt* — its state and seed progress — because the operator chose
+the split at G1 and the feed is theirs; its output streams as a byte count only.
+
 ## Blockers
 
 1. None open. Live-API verification of the new tarball/session/synthetic paths is deferred to the user-local `DAYTONA_LIVE=1` suite by instruction (no network calls from this session in this phase).
