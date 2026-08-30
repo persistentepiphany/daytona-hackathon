@@ -218,21 +218,25 @@ export default function Dashboard() {
   async function openJob(jobId: string) {
     setError(null);
     setActiveJobId(jobId);
-    const detail = await fetchRun(jobId);
-    setActiveRun(detail);
-    setThread([
-      {
-        kind: "user",
-        text: `Open job ${detail.title}`,
-        at: clock(),
-      },
-      {
-        kind: "assistant",
-        jobId,
-        prompt: detail.title,
-        at: clock(),
-      },
-    ]);
+    try {
+      const detail = await fetchRun(jobId);
+      setActiveRun(detail);
+      setThread([
+        {
+          kind: "user",
+          text: `Open job ${detail.title}`,
+          at: clock(),
+        },
+        {
+          kind: "assistant",
+          jobId,
+          prompt: detail.title,
+          at: clock(),
+        },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   const title = activeRun?.title || selectedPaper || "New analysis";
