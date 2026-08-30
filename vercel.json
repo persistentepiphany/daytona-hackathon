@@ -5,6 +5,7 @@
   "outputDirectory": "dist/public",
   "installCommand": "pnpm install",
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/proxy?__path=$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
