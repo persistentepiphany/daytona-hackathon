@@ -440,6 +440,13 @@ export default function Dashboard() {
               >
                 {paper.title}
                 {!paper.ready && <small className="run-status-chip">{paper.status}</small>}
+                {paper.ready && paper.storage_ephemeral && (
+                  <small className="run-status-chip" title="Shared staging objects are automatically deleted">
+                    temporary{paper.storage_expires_at
+                      ? ` · expires ${new Date(paper.storage_expires_at * 1000).toLocaleDateString()}`
+                      : ""}
+                  </small>
+                )}
               </button>
             ))}
             {!papers.length && <span className="conversation-link">No papers found</span>}
@@ -760,7 +767,7 @@ export default function Dashboard() {
             className="upload-button"
             type="button"
             aria-label="Upload PDF"
-            title="Upload a PDF directly to private object storage"
+            title="Upload a small PDF to temporary shared storage; arXiv ID/URL is preferred"
             disabled={busy || working}
             onClick={() => fileInputRef.current?.click()}
           >

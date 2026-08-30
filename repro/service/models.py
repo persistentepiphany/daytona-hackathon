@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -101,3 +101,18 @@ class Artifact(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class EphemeralBlob(Base):
+    """Shared, TTL-bound object fallback until external S3 is configured."""
+
+    __tablename__ = "service_ephemeral_blobs"
+    __table_args__ = (Index("idx_ephemeral_blobs_expires", "expires_at"),)
+    object_key: Mapped[str] = mapped_column(String(500), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(200), default="application/octet-stream")
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    updated_at: Mapped[float] = mapped_column(Float, default=time.time)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False)

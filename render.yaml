@@ -24,22 +24,20 @@ services:
         sync: false
       - key: API_TOKEN
         generateValue: true
+      - key: ARXIV_USER_AGENT
+        value: Snapshot-Reproduction/1.0 (+https://github.com/persistentepiphany/daytona-hackathon)
       - key: DAYTONA_API_KEY
         sync: false
       - key: ZAI_API_KEY
         sync: false
       - key: PARALLEL_API_KEY
         sync: false
-      - key: S3_ENDPOINT_URL
-        sync: false
-      - key: S3_REGION
-        value: auto
-      - key: S3_BUCKET
-        sync: false
-      - key: S3_ACCESS_KEY_ID
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
+      - key: OBJECT_STORAGE_BACKEND
+        value: database
+      - key: EPHEMERAL_BLOB_TTL_HOURS
+        value: "72"
+      - key: MAX_DATABASE_BLOB_BYTES
+        value: "52428800"
       - key: GITHUB_OWNER
         value: persistentepiphany
       - key: GITHUB_USER_TOKEN

@@ -1,8 +1,8 @@
 """Stateless HTTP control plane for durable paper-reproduction jobs.
 
 Production work is dispatched to an RQ background worker. Postgres is the source
-of truth and S3-compatible storage holds papers/evidence; the local fallbacks are
-only for development and tests.
+of truth. Objects use S3 when configured, or a shared TTL-bound Postgres fallback
+while staging credentials are unavailable.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from repro.service.repository import paper_dict, seed_bundled_papers
 
 SEEDS_RE = re.compile(r"^\d+(,\d+)*$")
 SHA256_RE = re.compile(r"^[a-fA-F0-9]{64}$")
+PROXY_UPLOAD_LIMIT = 4 * 1024 * 1024
 
 app = FastAPI(title="Snapshot durable reproduction API", version="2.0")
 app.add_middleware(
@@ -71,6 +72,37 @@ class RunRequest(BaseModel):
     paper_id: str | None = None
     paper_dir: str | None = None
     seeds: str = "17,41,93"
+
+
+def _paper_response(paper: Paper) -> dict:
+    """Add object-retention state without pretending expired blobs are ready."""
+    out = paper_dict(paper)
+    out.update(storage_backend=store.backend, storage_shared=store.is_shared,
+               storage_ephemeral=store.is_ephemeral,
+               storage_retention_hours=store.retention_hours)
+    if paper.source == "bundled" or not any((paper.pdf_key, paper.text_key, paper.metadata_key)):
+        return out
+    if not all((paper.pdf_key, paper.text_key, paper.metadata_key)):
+        if paper.status == "ready":
+            out.update(status="expired", ready=False,
+                       status_detail="Temporary paper objects are incomplete; submit the arXiv ID again to refetch them.")
+        return out
+    try:
+        heads = [store.head(key) for key in (paper.pdf_key, paper.text_key, paper.metadata_key) if key]
+        expiries = [head["expires_at"] for head in heads if head.get("expires_at")]
+        out["storage_expires_at"] = min(expiries) if expiries else None
+    except (OSError, ObjectStoreError):
+        out["storage_expires_at"] = None
+        if paper.status == "ready":
+            out.update(status="expired", ready=False,
+                       status_detail="Temporary paper objects expired; submit the arXiv ID again to refetch them.")
+    return out
+
+
+def _paper_objects_available(paper: Paper) -> bool:
+    if paper.source == "bundled":
+        return True
+    return all(store.exists(key) for key in (paper.pdf_key, paper.text_key, paper.metadata_key))
 
 
 def _job_dict(session: Session, job: Job, detailed: bool = False) -> dict:
@@ -158,10 +190,12 @@ def healthz() -> dict:
     return {
         "ok": True,
         "authenticated": bool(os.environ.get("API_TOKEN")),
-        "durable": bool(settings.redis_url and not settings.database_url.startswith("sqlite") and store.is_remote),
+        "durable": bool(settings.redis_url and not settings.database_url.startswith("sqlite") and store.is_shared),
         "services": {"database": "postgres" if not settings.database_url.startswith("sqlite") else "sqlite-dev",
                      "queue": "rq" if settings.redis_url else "thread-dev",
-                     "objects": "s3" if store.is_remote else "filesystem-dev"},
+                     "objects": store.backend},
+        "storage": {"backend": store.backend, "shared": store.is_shared,
+                    "ephemeral": store.is_ephemeral, "retention_hours": store.retention_hours},
         "keys": {"zai": bool(env_key("ZAI_API_KEY", "ZAI_API")),
                  "daytona": bool(env_key("DAYTONA_API_KEY", "DAYTONA_API")),
                  "parallel": bool(env_key("PARALLEL_API_KEY", "PARALLEL_API")),
@@ -176,7 +210,8 @@ def stages() -> dict[str, str]:
 
 @app.get("/papers", dependencies=[Depends(require_token)])
 def papers(session: Session = Depends(db_session)) -> list[dict]:
-    return [paper_dict(paper) for paper in session.scalars(select(Paper).order_by(Paper.created_at.desc())).all()]
+    return [_paper_response(paper) for paper in
+            session.scalars(select(Paper).order_by(Paper.created_at.desc())).all()]
 
 
 @app.get("/papers/{paper_id}", dependencies=[Depends(require_token)])
@@ -184,7 +219,7 @@ def get_paper(paper_id: str, session: Session = Depends(db_session)) -> dict:
     paper = session.get(Paper, paper_id)
     if not paper:
         raise HTTPException(status_code=404, detail="no such paper")
-    return paper_dict(paper)
+    return _paper_response(paper)
 
 
 @app.post("/papers/arxiv", status_code=202, dependencies=[Depends(require_token)])
@@ -195,15 +230,17 @@ def create_arxiv(req: ArxivRequest, session: Session = Depends(db_session)) -> d
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     existing = session.scalar(select(Paper).where(Paper.arxiv_id == arxiv_id))
     if existing:
-        if existing.status == "failed":
+        if existing.status == "failed" or (existing.status in {"ready", "expired"} and
+                                            not _paper_objects_available(existing)):
             existing.status = "ingesting"
-            existing.status_detail = "Retrying server-side arXiv ingestion."
+            existing.status_detail = "Refetching metadata and PDF from the arXiv API."
             emit(session, paper_id=existing.id, kind="paper.requeued", stage="INGEST",
-                 payload={"arxiv_id": arxiv_id})
+                 payload={"arxiv_id": arxiv_id, "reason": "retry_or_expired_storage",
+                          "storage_backend": store.backend})
             session.commit()
             enqueue("repro.service.tasks.ingest_arxiv", existing.id,
                     job_id=f"retry-ingest-{existing.id}-{int(time.time())}")
-        return paper_dict(existing)
+        return _paper_response(existing)
     paper = Paper(id=new_id("paper"), source="arxiv", arxiv_id=arxiv_id,
                   source_ref=f"https://arxiv.org/abs/{arxiv_id}", title=f"arXiv {arxiv_id}",
                   status="ingesting", status_detail="Queued for server-side arXiv download.")
@@ -212,7 +249,7 @@ def create_arxiv(req: ArxivRequest, session: Session = Depends(db_session)) -> d
     emit(session, paper_id=paper.id, kind="paper.queued", stage="INGEST", payload={"arxiv_id": arxiv_id})
     session.commit()
     enqueue("repro.service.tasks.ingest_arxiv", paper.id, job_id=f"ingest-{paper.id}")
-    return paper_dict(paper)
+    return _paper_response(paper)
 
 
 @app.post("/papers/uploads", status_code=202, dependencies=[Depends(require_token)])
@@ -223,11 +260,18 @@ def create_upload(req: UploadRequest, session: Session = Depends(db_session)) ->
         raise HTTPException(status_code=400, detail="filename must be a plain .pdf filename")
     if req.sha256 and not SHA256_RE.fullmatch(req.sha256):
         raise HTTPException(status_code=400, detail="sha256 must contain 64 hexadecimal characters")
+    if store.backend == "database" and req.size > PROXY_UPLOAD_LIMIT:
+        raise HTTPException(
+            status_code=503,
+            detail=("Temporary storage cannot proxy PDFs over 4 MiB through the hosted UI. "
+                    "Enter an arXiv ID/URL for server-side fetching, or configure S3 for direct uploads."),
+        )
     upload_id, paper_id = new_id("upload"), new_id("paper")
     key = f"papers/{paper_id}/paper.pdf"
     paper = Paper(id=paper_id, source="upload", source_ref=req.filename,
                   title=req.filename.removesuffix(".pdf"), status="uploading",
-                  status_detail="Waiting for direct object-storage upload.")
+                  status_detail="Waiting for upload to temporary shared storage."
+                  if store.is_ephemeral else "Waiting for direct object-storage upload.")
     upload = Upload(id=upload_id, object_key=key, filename=req.filename,
                     expected_size=req.size, expected_sha256=req.sha256, paper_id=paper_id)
     session.add_all([paper, upload])
@@ -235,13 +279,15 @@ def create_upload(req: UploadRequest, session: Session = Depends(db_session)) ->
     upload_url = (store.presign_put(key, "application/pdf") if store.is_remote
                   else f"/api/papers/uploads/{upload_id}/content")
     return {"upload_id": upload_id, "paper_id": paper_id, "upload_url": upload_url,
-            "method": "PUT", "headers": {"Content-Type": "application/pdf"}, "expires_in": 900}
+            "method": "PUT", "headers": {"Content-Type": "application/pdf"}, "expires_in": 900,
+            "storage_backend": store.backend, "storage_ephemeral": store.is_ephemeral,
+            "storage_retention_hours": store.retention_hours}
 
 
 @app.put("/papers/uploads/{upload_id}/content", dependencies=[Depends(require_token)])
 async def local_upload(upload_id: str, request: Request, session: Session = Depends(db_session)) -> dict:
     if store.is_remote:
-        raise HTTPException(status_code=404, detail="direct content endpoint is local-development only")
+        raise HTTPException(status_code=404, detail="direct content endpoint is disabled for S3 storage")
     upload = session.get(Upload, upload_id)
     if not upload:
         raise HTTPException(status_code=404, detail="no such upload")
@@ -277,6 +323,12 @@ def create_run(req: RunRequest, session: Session = Depends(db_session)) -> dict:
         raise HTTPException(status_code=404, detail="no such paper")
     if paper.status != "ready":
         raise HTTPException(status_code=409, detail=f"paper is {paper.status}: {paper.status_detail or ''}")
+    if not _paper_objects_available(paper):
+        paper.status = "expired"
+        paper.status_detail = "Temporary paper objects expired; submit the arXiv ID again to refetch them."
+        paper.updated_at = time.time()
+        session.commit()
+        raise HTTPException(status_code=409, detail=paper.status_detail)
     if not SEEDS_RE.fullmatch(req.seeds):
         raise HTTPException(status_code=400, detail="seeds must be comma-separated integers")
     job = Job(id=new_id("job"), paper_id=paper.id, seeds=req.seeds, status="queued", stage="PREFLIGHT",
@@ -371,7 +423,13 @@ def report(job_id: str, session: Session = Depends(db_session)) -> Response:
     item = session.scalar(select(Artifact).where(Artifact.job_id == job_id, Artifact.filename == "report.md"))
     if not item:
         raise HTTPException(status_code=404, detail="no report for this run")
-    return Response(store.get_bytes(item.object_key), media_type="text/markdown")
+    try:
+        head = store.head(item.object_key)
+        return Response(store.get_bytes(item.object_key), media_type="text/markdown",
+                        headers={"X-Snapshot-Storage": store.backend,
+                                 "X-Snapshot-Expires-At": str(head.get("expires_at") or "")})
+    except (OSError, ObjectStoreError) as exc:
+        raise HTTPException(status_code=410, detail="temporary report artifact expired") from exc
 
 
 @app.get("/artifacts/{artifact_id}", dependencies=[Depends(require_token)])
@@ -381,5 +439,11 @@ def artifact(artifact_id: str, session: Session = Depends(db_session)):
         raise HTTPException(status_code=404, detail="no such artifact")
     if store.is_remote:
         return RedirectResponse(store.presign_get(item.object_key), status_code=307)
-    return Response(store.get_bytes(item.object_key), media_type="application/octet-stream",
-                    headers={"Content-Disposition": f'attachment; filename="{item.filename}"'})
+    try:
+        head = store.head(item.object_key)
+        return Response(store.get_bytes(item.object_key), media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="{item.filename}"',
+                                 "X-Snapshot-Storage": store.backend,
+                                 "X-Snapshot-Expires-At": str(head.get("expires_at") or "")})
+    except (OSError, ObjectStoreError) as exc:
+        raise HTTPException(status_code=410, detail="temporary artifact expired") from exc

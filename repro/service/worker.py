@@ -8,6 +8,7 @@ from .config import settings
 from .database import init_db, session_scope
 from .events import emit
 from .models import Gate, Job, Paper, Upload
+from .object_store import store
 from .queueing import enqueue
 
 
@@ -44,6 +45,7 @@ def main() -> None:
     if not settings.redis_url:
         raise SystemExit("REDIS_URL is required for the production background worker")
     init_db()
+    store.cleanup_expired()
     recover_interrupted_work()
     connection = Redis.from_url(settings.redis_url)
     worker = Worker([Queue("snapshot", connection=connection)], connection=connection)

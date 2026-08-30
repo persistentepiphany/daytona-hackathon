@@ -55,7 +55,8 @@ def fetch_metadata(arxiv_id: str, client: httpx.Client | None = None) -> dict:
                                     headers={"User-Agent": USER_AGENT},
                                     transport=httpx.HTTPTransport(retries=3))
     try:
-        response = client.get("https://export.arxiv.org/api/query", params={"id_list": canonical})
+        response = client.get("https://export.arxiv.org/api/query", params={"id_list": canonical},
+                              headers={"User-Agent": USER_AGENT})
         response.raise_for_status()
         root = ET.fromstring(response.content)
         entry = root.find("a:entry", ATOM)
@@ -80,7 +81,8 @@ def fetch_pdf(arxiv_id: str, max_bytes: int, client: httpx.Client | None = None)
                                     headers={"User-Agent": USER_AGENT},
                                     transport=httpx.HTTPTransport(retries=3))
     try:
-        with client.stream("GET", f"https://arxiv.org/pdf/{canonical}") as response:
+        with client.stream("GET", f"https://arxiv.org/pdf/{canonical}",
+                           headers={"User-Agent": USER_AGENT}) as response:
             response.raise_for_status()
             declared = int(response.headers.get("content-length", "0") or 0)
             if declared > max_bytes:

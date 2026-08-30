@@ -1,5 +1,6 @@
 import json
 import socket
+import time
 from dataclasses import replace
 
 import httpx
@@ -8,12 +9,13 @@ from pypdf import PdfWriter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from repro.service.arxiv import ArxivInputError, extract_pdf, normalize_arxiv_id
+from repro.service.arxiv import ArxivInputError, extract_pdf, fetch_metadata, normalize_arxiv_id
 from repro.service.config import settings
 from repro.service.data_staging import DatasetUnavailable, validate_dataset_url
 from repro.service.github_publish import GitHubPublishError, GitHubPublisher, repo_slug
 from repro.service.packaging import UnsafeArtifact, collect_run_artifacts
-from repro.service.models import Base, Paper
+from repro.service.models import Base, EphemeralBlob, Paper
+from repro.service.object_store import ObjectStore, ObjectStoreError
 from repro.service.repository import seed_bundled_papers
 
 
@@ -39,6 +41,26 @@ def test_arxiv_input_rejects_arbitrary_urls_and_paths(value):
         normalize_arxiv_id(value)
 
 
+def test_arxiv_metadata_is_fetched_from_official_api():
+    atom = b'''<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+      <title> A useful paper </title><summary> Abstract text. </summary>
+      <author><name>Ada Researcher</name></author><published>2026-01-01T00:00:00Z</published>
+    </entry></feed>'''
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "export.arxiv.org"
+        assert request.url.path == "/api/query"
+        assert request.url.params["id_list"] == "1708.07747"
+        assert request.headers["user-agent"].startswith("Snapshot-Reproduction/")
+        return httpx.Response(200, content=atom)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        metadata = fetch_metadata("https://arxiv.org/abs/1708.07747", client)
+    assert metadata["title"] == "A useful paper"
+    assert metadata["authors"] == ["Ada Researcher"]
+
+
 def test_sparse_pdf_is_preserved_but_requires_ocr(tmp_path):
     path = tmp_path / "blank.pdf"
     writer = PdfWriter()
@@ -55,6 +77,49 @@ def test_sparse_pdf_is_preserved_but_requires_ocr(tmp_path):
 def test_non_pdf_is_rejected():
     with pytest.raises(ValueError, match="not a PDF"):
         extract_pdf(b"definitely not a pdf")
+
+
+def test_temporary_database_objects_are_shared_and_expiring(tmp_path):
+    config = replace(
+        settings,
+        database_url=f"sqlite:///{tmp_path / 'shared-blobs.db'}",
+        object_backend="database",
+        ephemeral_blob_ttl_hours=1,
+        max_database_blob_bytes=1024,
+    )
+    EphemeralBlob.__table__.create(create_engine(config.database_url))
+    web_store = ObjectStore(config)
+    worker_store = ObjectStore(config)
+    digest = web_store.put_bytes("papers/paper-1/paper.pdf", b"%PDF-test", "application/pdf")
+
+    assert worker_store.get_bytes("papers/paper-1/paper.pdf") == b"%PDF-test"
+    head = worker_store.head("papers/paper-1/paper.pdf")
+    assert head["size"] == 9
+    assert head["content_type"] == "application/pdf"
+    assert head["expires_at"] > time.time()
+    assert len(digest) == 64
+
+    worker_store.delete("papers/paper-1/paper.pdf")
+    assert not web_store.exists("papers/paper-1/paper.pdf")
+
+
+def test_temporary_database_objects_enforce_size_and_ttl(tmp_path):
+    base = replace(
+        settings,
+        database_url=f"sqlite:///{tmp_path / 'bounded-blobs.db'}",
+        object_backend="database",
+        ephemeral_blob_ttl_hours=1,
+        max_database_blob_bytes=3,
+    )
+    EphemeralBlob.__table__.create(create_engine(base.database_url))
+    bounded = ObjectStore(base)
+    with pytest.raises(ObjectStoreError, match="temporary database limit"):
+        bounded.put_bytes("too-large", b"four")
+
+    immediately_expiring = ObjectStore(replace(base, ephemeral_blob_ttl_hours=0,
+                                               max_database_blob_bytes=1024))
+    immediately_expiring.put_bytes("expired", b"data")
+    assert not immediately_expiring.exists("expired")
 
 
 def test_dataset_ssrf_guard_rejects_private_resolution(monkeypatch):

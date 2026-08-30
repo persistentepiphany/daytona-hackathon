@@ -26,6 +26,11 @@ export type PaperSummary = {
   status: string;
   status_detail?: string | null;
   source?: string;
+  storage_backend?: string;
+  storage_shared?: boolean;
+  storage_ephemeral?: boolean;
+  storage_retention_hours?: number | null;
+  storage_expires_at?: number | null;
 };
 
 export type RunSummary = {

@@ -4,9 +4,12 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 
 ## 1. How the pipeline works
 
-The hosted control plane accepts arXiv IDs/URLs and direct PDF uploads. In
-production it stores state in Postgres, dispatches work through RQ/Render Key
-Value, and stores source PDFs and evidence in private S3-compatible storage.
+The hosted control plane accepts arXiv IDs/URLs and direct PDF uploads. An arXiv
+ID is the preferred hosted path: Render retrieves metadata through the arXiv API
+and downloads the matching PDF server-side. Production stores state in Postgres
+and dispatches work through RQ/Render Key Value. Until S3 credentials are added,
+PDFs, extracted text, and evidence use a shared Postgres blob table with a 72-hour
+TTL; this is temporary staging storage, not an archival store.
 Render coordinates work; the P1/P2 compute itself runs in isolated Daytona
 sandboxes. A worker restart recovers the same public job as a new recorded
 attempt instead of changing it to `interrupted`.
@@ -26,15 +29,19 @@ attempt instead of changing it to `interrupted`.
 ### Hosted API
 
 - `POST /papers/arxiv` with `{ "arxiv_id_or_url": "1708.07747" }`
-- `POST /papers/uploads` → presigned PUT → `POST /papers/uploads/{id}/complete`
+- `POST /papers/uploads` → direct S3 PUT when configured, or a temporary shared
+  upload endpoint for PDFs up to 4 MiB → `POST /papers/uploads/{id}/complete`
 - `GET /papers/{paper_id}` to follow ingestion and extraction
 - `POST /runs` with `{ "paper_id": "...", "seeds": "17,41,93" }`
 - `GET /runs/{job_id}` and `GET /runs/{job_id}/events` for persisted status/SSE
 - `POST /runs/{job_id}/gates/G3/approve` for explicit private GitHub publication
 
 Production deployment is described by `render.yaml` and is deliberately pinned
-to `feat/arxiv-e2e-pipeline` for staging. The web service, worker, Postgres, and
-Key Value instances must share the same provider and object-store secrets.
+to `feat/arxiv-e2e-pipeline` for staging. The web service and worker share
+Postgres and Key Value. The staging Blueprint sets
+`OBJECT_STORAGE_BACKEND=database`; expired arXiv objects are refetched when the
+same ID is submitted again. To move to permanent storage, set the backend to
+`s3` and supply the S3-compatible settings shown in `.env.example`.
 
 ## 2. Invariants
 

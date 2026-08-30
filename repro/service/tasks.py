@@ -47,7 +47,8 @@ def ingest_arxiv(paper_id: str) -> None:
             if not paper or not paper.arxiv_id:
                 return
             emit(session, paper_id=paper_id, kind="paper.fetching", stage="INGEST",
-                 payload={"arxiv_id": paper.arxiv_id})
+                 payload={"arxiv_id": paper.arxiv_id, "provider": "arXiv API",
+                          "storage_backend": store.backend})
             arxiv_id = paper.arxiv_id
         metadata = fetch_metadata(arxiv_id)
         pdf = fetch_pdf(arxiv_id, settings.max_pdf_bytes)
@@ -65,6 +66,7 @@ def ingest_arxiv(paper_id: str) -> None:
         store.put_bytes(pdf_key, pdf, "application/pdf")
         store.put_bytes(text_key, extracted.text.encode(), "text/plain; charset=utf-8")
         store.put_bytes(metadata_key, json.dumps(payload, indent=2).encode(), "application/json")
+        storage_head = store.head(pdf_key)
         with session_scope() as session:
             paper = session.get(Paper, paper_id)
             if not paper:
@@ -82,7 +84,9 @@ def ingest_arxiv(paper_id: str) -> None:
                  payload={"pages": extracted.pages, "chars": len(extracted.text),
                           "needs_ocr": extracted.needs_ocr,
                           "pdf_sha256": extracted.pdf_sha256,
-                          "text_sha256": extracted.text_sha256})
+                          "text_sha256": extracted.text_sha256,
+                          "storage_backend": store.backend,
+                          "storage_expires_at": storage_head.get("expires_at")})
     except Exception as exc:
         _record_ingest_failure(paper_id, "INGEST", exc)
 
@@ -114,6 +118,7 @@ def complete_upload(upload_id: str) -> None:
                                      "status": "SKIPPED: direct upload has no authoritative metadata"}}
         store.put_bytes(text_key, extracted.text.encode(), "text/plain; charset=utf-8")
         store.put_bytes(metadata_key, json.dumps(metadata, indent=2).encode(), "application/json")
+        storage_head = store.head(key)
         with session_scope() as session:
             upload = session.get(Upload, upload_id)
             paper = session.get(Paper, paper_id) if paper_id else None
@@ -132,7 +137,9 @@ def complete_upload(upload_id: str) -> None:
                  payload={"pages": extracted.pages, "chars": paper.chars,
                           "needs_ocr": extracted.needs_ocr,
                           "pdf_sha256": extracted.pdf_sha256,
-                          "text_sha256": extracted.text_sha256})
+                          "text_sha256": extracted.text_sha256,
+                          "storage_backend": store.backend,
+                          "storage_expires_at": storage_head.get("expires_at")})
     except Exception as exc:
         with session_scope() as session:
             upload = session.get(Upload, upload_id)
