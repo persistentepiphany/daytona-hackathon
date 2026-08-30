@@ -87,8 +87,9 @@ class ArchaeologySession:
     def verify_s0_boot(self, snapshot_name: str,
                        volumes: list[tuple[str, str]] | None = None) -> None:
         """Boot a fresh sandbox from S0 and re-run the smoke gate there."""
-        sid = self.lifecycle.create("experiment", name=f"s0check-{self.run_id}",
-                                    snapshot=snapshot_name, ttl_minutes=20, volumes=volumes)
+        sid = self.lifecycle.create_with_retry(
+            "experiment", name=f"s0check-{self.run_id}",
+            snapshot=snapshot_name, ttl_minutes=20, volumes=volumes)
         try:
             r = self.adapter.exec(sid, "bash smoke.sh", cwd=WORK, timeout=900)
             self.ledger.log_event(self.run_id, "s0_boot_verified",

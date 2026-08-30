@@ -28,8 +28,8 @@ def stage_datasets(lifecycle: Lifecycle, adapter: SandboxAdapter, ledger: Ledger
         ledger.log_event(run_id, "staging_skipped", {"data_mode": "synthetic"})
         return {}
     volume_id = adapter.volume_ensure(volume_name)
-    sid = lifecycle.create("data_stager", name=f"stage-{run_id}", snapshot=base_snapshot,
-                           volumes=[(volume_id, MOUNT)])
+    sid = lifecycle.create_with_retry("data_stager", name=f"stage-{run_id}",
+                                      snapshot=base_snapshot, volumes=[(volume_id, MOUNT)])
     hashes: dict[str, str] = {}
     try:
         r = adapter.exec(sid, f"mkdir -p {MOUNT}/{subdir}")

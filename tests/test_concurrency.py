@@ -176,3 +176,22 @@ def test_gc_respects_a_minimum_age():
     delete, _ = gcmod.plan_snapshots(SNAPSHOTS, keep_runs=set(), keep_newest=0,
                                      min_age_hours=24 * 3650)
     assert delete == []
+
+
+def test_every_sandbox_create_goes_through_the_retry():
+    """A create that skips create_with_retry dies on a quota refusal instead of
+    queueing. verify_s0_boot was exactly that: it survived the first pass of this
+    work and killed a live run right after its smoke gate passed."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    bare = re.compile(r"\b(?:life|lifecycle|self\.lifecycle)\.create\(")
+    offenders = []
+    for path in list((root / "repro").rglob("*.py")) + list((root / "scripts").rglob("*.py")):
+        if path.name == "lifecycle.py":  # the definition and its own retry wrapper
+            continue
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if bare.search(line):
+                offenders.append(f"{path.relative_to(root)}:{n}")
+    assert not offenders, "bare lifecycle.create() calls: " + ", ".join(offenders)

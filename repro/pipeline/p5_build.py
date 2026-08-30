@@ -104,7 +104,7 @@ def deploy(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run_id: str
            files: dict[str, str], start_command: str = "python3 app.py",
            base_snapshot: str = "daytona-small", demo_window: bool = False) -> dict:
     kind = "build_demo" if demo_window else "build"
-    sid = life.create(kind, name=f"build-{run_id}", snapshot=base_snapshot)
+    sid = life.create_with_retry(kind, name=f"build-{run_id}", snapshot=base_snapshot)
     r = adapter.exec(sid, f"mkdir -p {APP_DIR}")
     if r.exit_code != 0:
         raise RuntimeError(f"cannot create app dir: {r.output}")

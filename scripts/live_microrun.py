@@ -105,7 +105,7 @@ def main() -> int:
     sid = None
     try:
         t0 = time.monotonic()
-        sid = life.create("experiment", name=f"micro-{run_id}"[:40],
+        sid = life.create_with_retry("experiment", name=f"micro-{run_id}"[:40],
                           snapshot=args.snapshot, ttl_minutes=args.ttl)
         report["create_seconds"] = round(time.monotonic() - t0, 1)
         print(f"sandbox {sid} in {report['create_seconds']}s", flush=True)
