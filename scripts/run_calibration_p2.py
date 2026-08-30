@@ -128,19 +128,22 @@ def main() -> int:
     return 1 if failures else 0
 
 
-def _sham_prereg(prereg: dict) -> tuple[dict, str]:
-    claim = next(c for c in prereg["claims"] if c["id"] == "C4")
-    sham_claim = dict(claim, id="C4", reported_value=round(claim["reported_value"] + SHAM_DELTA, 3))
+def _sham_prereg(prereg: dict, claim_id: str = "C1",
+                 exp_id: str = "SH01") -> tuple[dict, str]:
+    # corrupt a drift-stable claim: the sham must fail because the target is wrong,
+    # not accidentally pass because real library drift overlaps the corruption
+    claim = next(c for c in prereg["claims"] if c["id"] == claim_id)
+    sham_claim = dict(claim, reported_value=round(claim["reported_value"] + SHAM_DELTA, 3))
     entry = {
-        "experiment_id": "SH01", "claim_id": "C4", "type": "reproduce",
-        "command": "bash runner.sh SH01",
-        "rule": {"id": "R-SH01", "kind": "abs_tolerance",
+        "experiment_id": exp_id, "claim_id": claim_id, "type": "reproduce",
+        "command": f"bash runner.sh {exp_id}",
+        "rule": {"id": f"R-{exp_id}", "kind": "abs_tolerance",
                  "target": sham_claim["reported_value"], "tolerance": 0.01,
                  "aggregate": "mean"},
     }
     doc = {"version": 1, "role": "sham_twin", "paper": prereg["paper"],
            "claims": [sham_claim], "experiments": [entry],
-           "tolerances": {"C4": 0.01}, "seeds": prereg["seeds"]}
+           "tolerances": {claim_id: 0.01}, "seeds": prereg["seeds"]}
     text = canonical_json(doc)
     return doc, hashlib.sha256(text.encode()).hexdigest()
 
