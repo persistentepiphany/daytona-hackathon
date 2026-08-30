@@ -8,12 +8,12 @@ of all sync client packages to honor HTTPS_PROXY and the CA bundle env vars; it
 is a no-op when those variables are absent.
 """
 
-import os
+from ..env import env_key
 
 
 def _proxy_settings() -> tuple[str | None, str | None]:
-    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
-    ca = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
+    proxy = env_key("HTTPS_PROXY", "https_proxy")
+    ca = env_key("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE")
     return proxy, ca
 
 
@@ -52,9 +52,9 @@ def make_daytona():
     enable_proxy_env()
     from daytona import Daytona, DaytonaConfig
 
-    key = os.environ.get("DAYTONA_API_KEY") or os.environ.get("DAYTONA_API")
+    key = env_key("DAYTONA_API_KEY", "DAYTONA_API")
     if not key:
-        raise RuntimeError("no DAYTONA_API_KEY / DAYTONA_API in environment")
+        raise RuntimeError("no DAYTONA_API_KEY / DAYTONA_API in environment or .env")
     return Daytona(DaytonaConfig(api_key=key))
 
 

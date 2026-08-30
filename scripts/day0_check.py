@@ -20,6 +20,7 @@ import traceback
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from repro.env import env_key  # noqa: E402
 from repro.orchestrator.daytona_client import enable_proxy_env  # noqa: E402
 
 enable_proxy_env()
@@ -42,14 +43,6 @@ VM_SNAPSHOT = "daytona-vm-small"
 API_URL = "https://app.daytona.io/api"
 
 
-def env_key(*names: str) -> str | None:
-    for n in names:
-        v = os.environ.get(n)
-        if v:
-            return v
-    return None
-
-
 class Day0:
     def __init__(self, skip_gpu: bool, skip_parallel: bool):
         self.skip_gpu = skip_gpu
@@ -63,7 +56,7 @@ class Day0:
         self.d: Sandbox | None = None
         key = env_key("DAYTONA_API_KEY", "DAYTONA_API")
         if not key:
-            raise SystemExit("no DAYTONA_API_KEY / DAYTONA_API in environment")
+            raise SystemExit("no DAYTONA_API_KEY / DAYTONA_API in environment or .env")
         self.key = key
         self.daytona = Daytona(DaytonaConfig(api_key=key))
 
@@ -287,7 +280,7 @@ class Day0:
             return
         pkey = env_key("PARALLEL_API_KEY", "PARALLEL_API")
         if not pkey:
-            self.record("13 Parallel round-trip", "no key in environment")
+            self.record("13 Parallel round-trip", "no key in environment or .env")
             return
         body = {
             "objective": "Locate any official or third-party source code release for the paper 'Random Forests' (Breiman, 2001).",

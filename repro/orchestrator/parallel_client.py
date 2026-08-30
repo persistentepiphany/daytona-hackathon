@@ -7,9 +7,9 @@ complete end-to-end with this disabled; callers treat ParallelDisabled as a norm
 fall-through, not an error.
 """
 
-import os
-
 import httpx
+
+from ..env import env_key
 
 from .budget import Budget
 from .ledger import Ledger
@@ -32,7 +32,7 @@ class ParallelClient:
         self.budget = budget
         self.enabled_stages = tuple(enabled_stages)
         self.per_stage_caps = dict(per_stage_caps or {"intake": 3, "archaeology": 10})
-        self.api_key = api_key or os.environ.get("PARALLEL_API_KEY") or os.environ.get("PARALLEL_API")
+        self.api_key = api_key or env_key("PARALLEL_API_KEY", "PARALLEL_API")
         self._stage_counts: dict[str, int] = {}
 
     def enabled(self, stage: str) -> bool:
