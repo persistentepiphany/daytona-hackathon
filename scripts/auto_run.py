@@ -133,7 +133,10 @@ def main() -> int:
              build_manifest(doc, prereg_hash, e["experiment_id"],
                             budget={"ttl_min": TTL_MIN, "cpu": 2, "memory_gib": 4}))
             for e in doc["experiments"]]
-    with cf.ThreadPoolExecutor(max_workers=2) as pool:
+    # one at a time: the Ledger's SQLite connection is not safe to share across
+    # threads, and two concurrent experiments raced it into
+    # 'cannot commit - no transaction is active'
+    with cf.ThreadPoolExecutor(max_workers=1) as pool:
         futures = {pool.submit(run_experiment, prereg=doc, prereg_hash=prereg_hash,
                                manifest=m, **common): eid for eid, m in jobs}
         for fut in cf.as_completed(futures):
