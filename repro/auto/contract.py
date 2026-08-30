@@ -84,16 +84,30 @@ def _complete_rule(rule: dict | None, claim: dict, tolerances: dict) -> dict:
     out.setdefault("kind", "abs_tolerance")
     out.setdefault("aggregate", "mean")
     out.setdefault("id", f"R-{claim['id']}")
-    if out.get("target") is None:
-        out["target"] = claim["reported_value"]
-    if out.get("tolerance") is None:
-        out["tolerance"] = tolerances.get(claim["id"])
-    for key in ("target", "tolerance"):
-        if out.get(key) is None:
-            raise RoleError(f"claim {claim['id']}: rule has no {key} and none could "
-                            f"be derived; refusing to freeze an ungradeable prereg")
-        out[key] = float(out[key])
+    fallbacks = {"target": claim.get("reported_value"),
+                 "tolerance": tolerances.get(claim["id"])}
+    for key, fallback in fallbacks.items():
+        # the planner fills these with anything: a number, a numeric string, a
+        # word like "mean" that belongs in `aggregate`, or nothing at all
+        value = _as_float(out.get(key))
+        if value is None:
+            value = _as_float(fallback)
+        if value is None:
+            raise RoleError(f"claim {claim['id']}: rule has no usable {key} "
+                            f"({out.get(key)!r}) and none could be derived; "
+                            f"refusing to freeze an ungradeable prereg")
+        out[key] = value
     return out
+
+
+def _as_float(value) -> float | None:
+    """A float if the value can honestly be read as one, otherwise None."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
