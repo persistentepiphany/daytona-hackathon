@@ -1,0 +1,854 @@
+7
+1
+0
+2
+
+p
+e
+S
+5
+1
+
+]
+
+G
+L
+.
+s
+c
+[
+
+2
+v
+7
+4
+7
+7
+0
+.
+8
+0
+7
+1
+:
+v
+i
+X
+r
+a
+
+Fashion-MNIST: a Novel Image Dataset for
+Benchmarking Machine Learning Algorithms
+
+Han Xiao
+Zalando Research
+Mühlenstraße 25, 10243 Berlin
+han.xiao@zalando.de
+
+Kashif Rasul
+Zalando Research
+Mühlenstraße 25, 10243 Berlin
+kashif.rasul@zalando.de
+
+Roland Vollgraf
+Zalando Research
+Mühlenstraße 25, 10243 Berlin
+roland.vollgraf@zalando.de
+
+Abstract
+
+We present Fashion-MNIST, a new dataset comprising of 28 × 28 grayscale
+images of 70, 000 fashion products from 10 categories, with 7, 000 images
+The training set has 60, 000 images and the test set has
+per category.
+10, 000 images.
+Fashion-MNIST is intended to serve as a direct drop-
+in replacement for the original MNIST dataset for benchmarking machine
+learning algorithms, as it shares the same image size, data format and the
+structure of training and testing splits.
+is freely available at
+https://github.com/zalandoresearch/fashion-mnist.
+
+The dataset
+
+1 Introduction
+
+The MNIST dataset comprising of 10-class handwritten digits, was ﬁrst introduced by LeCun et al.
+[1998] in 1998. At that time one could not have foreseen the stellar rise of deep learning tech-
+niques and their performance. Despite the fact that today deep learning can do so much the sim-
+ple MNIST dataset has become the most widely used testbed in deep learning, surpassing CIFAR-
+10 [Krizhevsky and Hinton, 2009] and ImageNet [Deng et al., 2009] in its popularity via Google
+trends1. Despite its simplicity its usage does not seem to be decreasing despite calls for it in the
+deep learning community.
+
+The reason MNIST is so popular has to do with its size, allowing deep learning researchers to quickly
+check and prototype their algorithms. This is also complemented by the fact that all machine learning
+libraries (e.g. scikit-learn) and deep learning frameworks (e.g. Tensorﬂow, Pytorch) provide helper
+functions and convenient examples that use MNIST out of the box.
+
+Our aim with this work is to create a good benchmark dataset which has all the accessibility of
+MNIST, namely its small size, straightforward encoding and permissive license. We took the ap-
+proach of sticking to the 10 classes 70, 000 grayscale images in the size of 28 × 28 as in the original
+MNIST. In fact, the only change one needs to use this dataset is to change the URL from where the
+MNIST dataset is fetched. Moreover, Fashion-MNIST poses a more challenging classiﬁcation task
+than the simple MNIST digits data, whereas the latter has been trained to accuracies above 99.7%
+as reported in Wan et al. [2013], Ciregan et al. [2012].
+
+We also looked at the EMNIST dataset provided by Cohen et al. [2017], an extended version of
+MNIST that extends the number of classes by introducing uppercase and lowercase characters. How-
+
+1https://trends.google.com/trends/explore?date=all&q=mnist,CIFAR,ImageNet
+
+ 
+ 
+ 
+ 
+ 
+ 
+ever, to be able to use it seamlessly one needs to not only extend the deep learning framework’s
+MNIST helpers, but also change the underlying deep neural network to classify these extra classes.
+
+2 Fashion-MNIST Dataset
+
+Fashion-MNIST is based on the assortment on Zalando’s website2. Every fashion product on Za-
+lando has a set of pictures shot by professional photographers, demonstrating different aspects of
+the product, i.e. front and back looks, details, looks with model and in an outﬁt. The original picture
+has a light-gray background (hexadecimal color: #fdfdfd) and stored in 762 × 1000 JPEG format.
+For efﬁciently serving different frontend components, the original picture is resampled with multiple
+resolutions, e.g. large, medium, small, thumbnail and tiny.
+We use the front look thumbnail images of 70, 000 unique products to build Fashion-MNIST. Those
+products come from different gender groups: men, women, kids and neutral. In particular, white-
+color products are not included in the dataset as they have low contrast to the background. The
+thumbnails (51 × 73) are then fed into the following conversion pipeline, which is visualized in
+Figure 1.
+
+1. Converting the input to a PNG image.
+2. Trimming any edges that are close to the color of the corner pixels. The “closeness” is
+
+deﬁned by the distance within 5% of the maximum possible intensity in RGB space.
+
+3. Resizing the longest edge of the image to 28 by subsampling the pixels, i.e. some rows and
+
+columns are skipped over.
+
+4. Sharpening pixels using a Gaussian operator of the radius and standard deviation of 1.0,
+
+with increasing effect near outlines.
+
+5. Extending the shortest edge to 28 and put the image to the center of the canvas.
+6. Negating the intensities of the image.
+7. Converting the image to 8-bit grayscale pixels.
+
+Figure 1: Diagram of the conversion process used to generate Fashion-MNIST dataset. Two exam-
+ples from dress and sandals categories are depicted, respectively. Each column represents a step
+described in section 2.
+
+Table 1: Files contained in the Fashion-MNIST dataset.
+
+Name
+
+Description
+
+train-images-idx3-ubyte.gz Training set images
+train-labels-idx1-ubyte.gz
+t10k-images-idx3-ubyte.gz Test set images
+t10k-labels-idx1-ubyte.gz
+
+Training set labels
+
+Test set labels
+
+# Examples
+60, 000
+60, 000
+10, 000
+10, 000
+
+Size
+25 MBytes
+140 Bytes
+4.2 MBytes
+92 Bytes
+
+For the class labels, we use the silhouette code of the product. The silhouette code is manually
+labeled by the in-house fashion experts and reviewed by a separate team at Zalando. Each product
+
+2Zalando is the Europe’s largest online fashion platform. http://www.zalando.com
+
+2
+
+contains only one silhouette code. Table 2 gives a summary of all class labels in Fashion-MNIST
+with examples for each class.
+
+Finally, the dataset is divided into a training and a test set. The training set receives a randomly-
+selected 6, 000 examples from each class. Images and labels are stored in the same ﬁle format as the
+MNIST data set, which is designed for storing vectors and multidimensional matrices. The result
+ﬁles are listed in Table 1. We sort examples by their labels while storing, resulting in smaller label
+ﬁles after compression comparing to the MNIST. It is also easier to retrieve examples with a certain
+class label. The data shufﬂing job is therefore left to the algorithm developer.
+
+Table 2: Class names and example images in Fashion-MNIST dataset.
+
+Label Description
+
+Examples
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+T-Shirt/Top
+
+Trouser
+
+Pullover
+
+Dress
+
+Coat
+
+Sandals
+
+Shirt
+
+Sneaker
+
+Bag
+
+Ankle boots
+
+3 Experiments
+
+We provide some classiﬁcation results in Table 3 to form a benchmark on this data set. All al-
+gorithms are repeated 5 times by shufﬂing the training data and the average accuracy on the
+test set is reported. The benchmark on the MNIST dataset is also included for a side-by-side
+comparison. A more comprehensive table with explanations on the algorithms can be found on
+https://github.com/zalandoresearch/fashion-mnist.
+
+Table 3: Benchmark on Fashion-MNIST (Fashion) and MNIST.
+
+Classiﬁer
+
+Parameter
+
+DecisionTreeClassiﬁer
+
+criterion=entropy max_depth=10 splitter=best
+
+criterion=entropy max_depth=10 splitter=random
+
+criterion=entropy max_depth=50 splitter=best
+
+3
+
+Test Accuracy
+
+Fashion MNIST
+0.873
+0.861
+0.886
+
+0.798
+0.792
+0.789
+
+Continued on next page
+
+Table 3 – continued from previous page
+
+Classiﬁer
+
+Parameter
+
+ExtraTreeClassiﬁer
+
+criterion=entropy max_depth=100 splitter=best
+
+criterion=gini max_depth=10 splitter=best
+
+criterion=entropy max_depth=50 splitter=random
+
+criterion=entropy max_depth=100 splitter=random
+
+criterion=gini max_depth=100 splitter=best
+criterion=gini max_depth=50 splitter=best
+
+criterion=gini max_depth=10 splitter=random
+
+criterion=gini max_depth=50 splitter=random
+
+criterion=gini max_depth=100 splitter=random
+
+criterion=gini max_depth=10 splitter=best
+
+criterion=entropy max_depth=100 splitter=best
+
+criterion=entropy max_depth=10 splitter=best
+criterion=entropy max_depth=50 splitter=best
+
+criterion=gini max_depth=100 splitter=best
+
+criterion=gini max_depth=50 splitter=best
+
+criterion=entropy max_depth=50 splitter=random
+
+criterion=entropy max_depth=100 splitter=random
+
+criterion=gini max_depth=50 splitter=random
+
+criterion=gini max_depth=100 splitter=random
+
+criterion=gini max_depth=10 splitter=random
+
+criterion=entropy max_depth=10 splitter=random
+
+GaussianNB
+
+priors=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+
+GradientBoostingClassiﬁer
+
+n_estimators=100 loss=deviance max_depth=10
+
+KNeighborsClassiﬁer
+
+LinearSVC
+
+n_estimators=50 loss=deviance max_depth=10
+
+n_estimators=100 loss=deviance max_depth=3
+
+n_estimators=10 loss=deviance max_depth=10
+
+n_estimators=50 loss=deviance max_depth=3
+n_estimators=10 loss=deviance max_depth=50
+
+n_estimators=10 loss=deviance max_depth=3
+
+weights=distance n_neighbors=5 p=1
+
+weights=distance n_neighbors=9 p=1
+
+weights=uniform n_neighbors=9 p=1
+
+weights=uniform n_neighbors=5 p=1
+
+weights=distance n_neighbors=5 p=2
+
+weights=distance n_neighbors=9 p=2
+weights=uniform n_neighbors=5 p=2
+
+weights=uniform n_neighbors=9 p=2
+
+weights=distance n_neighbors=1 p=2
+
+weights=uniform n_neighbors=1 p=2
+
+weights=uniform n_neighbors=1 p=1
+
+weights=distance n_neighbors=1 p=1
+
+loss=hinge C=1 multi_class=ovr penalty=l2
+loss=hinge C=1 multi_class=crammer_singer penalty=l2
+
+loss=squared_hinge C=1 multi_class=crammer_singer penalty=l2
+
+loss=squared_hinge C=1 multi_class=crammer_singer penalty=l1
+
+loss=hinge C=1 multi_class=crammer_singer penalty=l1
+
+loss=squared_hinge C=1 multi_class=ovr penalty=l2
+
+loss=squared_hinge C=10 multi_class=ovr penalty=l2
+
+loss=squared_hinge C=100 multi_class=ovr penalty=l2
+
+loss=hinge C=10 multi_class=ovr penalty=l2
+
+loss=hinge C=100 multi_class=ovr penalty=l2
+
+Test Accuracy
+
+Fashion MNIST
+0.886
+0.866
+0.883
+0.881
+0.879
+0.877
+0.853
+0.873
+0.875
+0.806
+0.847
+0.810
+0.847
+0.843
+0.845
+0.826
+0.828
+0.824
+0.820
+0.737
+0.745
+0.524
+0.969
+0.964
+0.949
+0.933
+0.926
+0.888
+0.846
+0.959
+0.955
+0.955
+0.957
+0.945
+0.944
+0.944
+0.943
+0.943
+0.943
+0.955
+0.955
+0.917
+0.919
+0.919
+0.919
+0.919
+0.912
+0.885
+0.873
+0.879
+0.872
+
+0.789
+0.788
+0.787
+0.787
+0.785
+0.783
+0.783
+0.779
+0.777
+0.775
+0.775
+0.772
+0.772
+0.769
+0.768
+0.752
+0.752
+0.748
+0.745
+0.739
+0.737
+0.511
+0.880
+0.872
+0.862
+0.849
+0.840
+0.795
+0.782
+0.854
+0.854
+0.853
+0.852
+0.852
+0.849
+0.849
+0.847
+0.839
+0.839
+0.838
+0.838
+0.836
+0.835
+0.834
+0.833
+0.833
+0.820
+0.779
+0.776
+0.764
+0.758
+
+Continued on next page
+
+4
+
+Table 3 – continued from previous page
+
+Classiﬁer
+
+Parameter
+
+LogisticRegression
+
+MLPClassiﬁer
+
+loss=hinge C=10 multi_class=crammer_singer penalty=l1
+
+loss=hinge C=10 multi_class=crammer_singer penalty=l2
+
+loss=squared_hinge C=10 multi_class=crammer_singer penalty=l2
+
+loss=squared_hinge C=10 multi_class=crammer_singer penalty=l1
+
+loss=hinge C=100 multi_class=crammer_singer penalty=l1
+loss=hinge C=100 multi_class=crammer_singer penalty=l2
+
+loss=squared_hinge C=100 multi_class=crammer_singer penalty=l1
+
+loss=squared_hinge C=100 multi_class=crammer_singer penalty=l2
+
+C=1 multi_class=ovr penalty=l1
+
+C=1 multi_class=ovr penalty=l2
+
+C=10 multi_class=ovr penalty=l2
+
+C=10 multi_class=ovr penalty=l1
+C=100 multi_class=ovr penalty=l2
+
+activation=relu hidden_layer_sizes=[100]
+
+activation=relu hidden_layer_sizes=[100, 10]
+
+activation=tanh hidden_layer_sizes=[100]
+
+activation=tanh hidden_layer_sizes=[100, 10]
+
+activation=relu hidden_layer_sizes=[10, 10]
+
+activation=relu hidden_layer_sizes=[10]
+
+activation=tanh hidden_layer_sizes=[10, 10]
+
+activation=tanh hidden_layer_sizes=[10]
+
+PassiveAggressiveClassiﬁer
+
+Perceptron
+
+C=1
+
+C=100
+
+C=10
+
+penalty=l1
+
+penalty=l2
+
+penalty=elasticnet
+
+RandomForestClassiﬁer
+
+n_estimators=100 criterion=entropy max_depth=100
+
+n_estimators=100 criterion=gini max_depth=100
+
+n_estimators=50 criterion=entropy max_depth=100
+
+n_estimators=100 criterion=entropy max_depth=50
+n_estimators=50 criterion=entropy max_depth=50
+
+n_estimators=100 criterion=gini max_depth=50
+
+n_estimators=50 criterion=gini max_depth=50
+
+n_estimators=50 criterion=gini max_depth=100
+
+n_estimators=10 criterion=entropy max_depth=50
+
+n_estimators=10 criterion=entropy max_depth=100
+
+n_estimators=10 criterion=gini max_depth=50
+
+n_estimators=10 criterion=gini max_depth=100
+
+n_estimators=50 criterion=entropy max_depth=10
+
+n_estimators=100 criterion=entropy max_depth=10
+
+n_estimators=100 criterion=gini max_depth=10
+n_estimators=50 criterion=gini max_depth=10
+
+n_estimators=10 criterion=entropy max_depth=10
+
+n_estimators=10 criterion=gini max_depth=10
+
+loss=hinge penalty=l2
+
+loss=perceptron penalty=l1
+
+loss=modified_huber penalty=l1
+
+loss=modified_huber penalty=l2
+
+loss=log penalty=elasticnet
+
+loss=hinge penalty=elasticnet
+
+5
+
+SGDClassiﬁer
+
+Test Accuracy
+
+Fashion MNIST
+0.783
+0.816
+0.829
+0.829
+0.759
+0.753
+0.746
+0.737
+0.917
+0.917
+0.916
+0.909
+0.916
+0.972
+0.972
+0.962
+0.957
+0.936
+0.933
+0.921
+0.921
+0.877
+0.875
+0.880
+0.887
+0.845
+0.845
+0.970
+0.970
+0.968
+0.969
+0.967
+0.971
+0.968
+0.967
+0.949
+0.949
+0.948
+0.948
+0.947
+0.950
+0.949
+0.945
+0.933
+0.930
+0.914
+0.912
+0.910
+0.913
+0.912
+0.913
+
+0.751
+0.749
+0.748
+0.736
+0.516
+0.496
+0.492
+0.484
+0.842
+0.841
+0.839
+0.839
+0.836
+0.871
+0.870
+0.868
+0.863
+0.850
+0.848
+0.841
+0.840
+0.776
+0.775
+0.773
+0.782
+0.754
+0.726
+0.873
+0.872
+0.872
+0.872
+0.871
+0.871
+0.870
+0.869
+0.853
+0.852
+0.848
+0.847
+0.838
+0.838
+0.835
+0.834
+0.828
+0.825
+0.819
+0.818
+0.817
+0.816
+0.816
+0.816
+
+Continued on next page
+
+Table 3 – continued from previous page
+
+Classiﬁer
+
+Parameter
+
+SVC
+
+loss=squared_hinge penalty=elasticnet
+
+loss=hinge penalty=l1
+
+loss=log penalty=l1
+
+loss=perceptron penalty=l2
+
+loss=perceptron penalty=elasticnet
+
+loss=squared_hinge penalty=l2
+
+loss=modified_huber penalty=elasticnet
+
+loss=log penalty=l2
+
+loss=squared_hinge penalty=l1
+
+C=10 kernel=rbf
+
+C=10 kernel=poly
+
+C=100 kernel=poly
+C=100 kernel=rbf
+
+C=1 kernel=rbf
+
+C=1 kernel=poly
+
+C=1 kernel=linear
+
+C=10 kernel=linear
+
+C=100 kernel=linear
+
+C=1 kernel=sigmoid
+
+C=10 kernel=sigmoid
+
+C=100 kernel=sigmoid
+
+Test Accuracy
+
+Fashion MNIST
+0.914
+0.911
+0.910
+0.913
+0.912
+0.912
+0.914
+0.913
+0.911
+0.973
+0.976
+0.978
+0.972
+0.966
+0.957
+0.929
+0.927
+0.926
+0.898
+0.873
+0.868
+
+0.815
+0.815
+0.815
+0.814
+0.814
+0.814
+0.813
+0.813
+0.813
+0.897
+0.891
+0.890
+0.890
+0.879
+0.873
+0.839
+0.829
+0.827
+0.678
+0.671
+0.664
+
+4 Conclusions
+
+This paper introduced Fashion-MNIST, a fashion product images dataset intended to be a drop-
+in replacement of MNIST and whilst providing a more challenging alternative for benchmarking
+machine learning algorithm. The images in Fashion-MNIST are converted to a format that matches
+that of the MNIST dataset, making it immediately compatible with any machine learning package
+capable of working with the original MNIST dataset.
+
+References
+
+D. Ciregan, U. Meier, and J. Schmidhuber. Multi-column deep neural networks for image classiﬁ-
+cation. In Computer Vision and Pattern Recognition (CVPR), 2012 IEEE Conference on, pages
+3642–3649. IEEE, 2012.
+
+G. Cohen, S. Afshar, J. Tapson, and A. van Schaik. Emnist: an extension of mnist to handwritten
+
+letters. arXiv preprint arXiv:1702.05373, 2017.
+
+J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei-Fei. Imagenet: A large-scale hierarchical im-
+age database. In Computer Vision and Pattern Recognition, 2009. CVPR 2009. IEEE Conference
+on, pages 248–255. IEEE, 2009.
+
+A. Krizhevsky and G. Hinton. Learning multiple layers of features from tiny images. 2009.
+
+Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner. Gradient-based learning applied to document
+
+recognition. Proceedings of the IEEE, 86(11):2278–2324, 1998.
+
+L. Wan, M. Zeiler, S. Zhang, Y. L. Cun, and R. Fergus. Regularization of neural networks using
+dropconnect. In Proceedings of the 30th international conference on machine learning (ICML-
+13), pages 1058–1066, 2013.
+
+6
+
+
