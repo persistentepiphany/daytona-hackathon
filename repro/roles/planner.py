@@ -53,8 +53,9 @@ def validate_proposal(p: dict) -> None:
             raise RoleError(f"experiment type outside the fixed menu: {e.get('type')}")
         if e.get("claim_id") not in ids:
             raise RoleError(f"experiment targets unknown claim {e.get('claim_id')}")
-        if e["type"] != "reproduce" and not e.get("mutation", {}).get("config_key"):
-            raise RoleError(f"{e.get('experiment_id')}: non-reproduce experiments need a config-diff mutation")
+        if (e["type"] in ("ablation", "stronger_baseline", "randomized_control")
+                and not e.get("mutation", {}).get("config_key")):
+            raise RoleError(f"{e.get('experiment_id')}: {e['type']} experiments need a config-diff mutation")
     for a in p.get("ambiguities") or []:
         if not a.get("config_key"):
             raise RoleError(f"ambiguity without config key: {a}")

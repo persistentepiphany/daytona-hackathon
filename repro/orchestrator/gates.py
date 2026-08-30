@@ -10,7 +10,7 @@ import time
 
 from .ledger import Ledger
 
-GATES = ("G1", "G2", "G3")
+GATES = ("G1", "G2", "G3", "P4")  # P4 approves the single adaptive round's prereg-002
 
 
 class GateError(RuntimeError):
