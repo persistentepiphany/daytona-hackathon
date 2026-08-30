@@ -57,12 +57,31 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 9. The generated SDK clients ignore proxy environment variables; `daytona_client.enable_proxy_env()` patches all three client packages to honor `HTTPS_PROXY`/`SSL_CERT_FILE` (a no-op elsewhere). Control plane is `app.daytona.io`; exec/file operations travel via `proxy.app-eu.daytona.io` / `proxy.app-us.daytona.io`, which restrictive networks must also allow.
 10. Sandboxes execute as user `daytona` (`$HOME=/home/daytona`), not root.
 
-## 6. Calibration run (live)
+## 6. Calibration run (live, run `cal-1788095064`)
 
 1. Calibration paper: Fashion-MNIST (arXiv:1708.07747), chosen because its Table 3 benchmark claims are CPU-reproducible in minutes and its data is reachable from the sandbox egress allowlist. Claims were transcribed from the paper PDF (values cross-checked against the paper's own repository benchmark). Note: this paper has an official implementation — the code-absence wedge criterion is deliberately NOT satisfied by the calibration target; it exists to prove the pipeline, and its rows double as the false-positive check.
-2. P1 proven live: prereg frozen first (held-out annex separated), four dataset files staged and checksummed (hashes match the publisher's known values), environment built from recipe, smoke gate passed, S₀ frozen, fresh boot from S₀ re-passed smoke, archaeology box deleted.
+2. Pipeline order held: prereg frozen first (`8463f589…`, held-out claim separated into the orchestrator-side annex), four dataset files staged and checksummed (hashes match the publisher's known values), environment built from recipe, smoke gate passed, S₀ frozen in 29s, fresh boot from S₀ re-passed smoke in 12s, archaeology box deleted.
 3. Staged data is baked into S₀ from the volume during archaeology, so experiments (including the hermetic one) never read the mount at run time; every run still re-verifies the ledger checksums first.
-4. P2/P3 verdict table: see `runs/` artifacts and the section below once published.
+4. Verdict table (full report with rule ids, attempt ids, and evidence hashes in `results/calibration/cal-1788095064/report.md`):
+
+| Experiment | Claim | Type | Held-out | Reported | Observed | Verdict |
+|---|---|---|---|---|---|---|
+| SH01 | C4 | sham (corrupted +0.05) | - | 0.561 | 0.5856 | REPRODUCED OUTSIDE PREREGISTERED TOLERANCE |
+| SH02 | C1 | sham (corrupted +0.05) | - | 0.848 | 0.8111 | **NOT REPRODUCED** (false-positive check passed) |
+| E001 | C1 | reproduce (DecisionTree) | no | 0.798 | 0.8111 | REPRODUCED WITHIN TOLERANCE |
+| E002 | C2 | reproduce (RandomForest) | no | 0.873 | 0.8778 | REPRODUCED WITHIN TOLERANCE |
+| E003 | C3 | reproduce (LogisticRegression) | no | 0.841 | - | NOT ATTEMPTABLE (exceeded timebox on 2 vCPU) |
+| E004 | C4 | reproduce (GaussianNB) | no | 0.511 | 0.5856 | **NOT REPRODUCED** |
+| E006 | C7 | reproduce (DecisionTree d50) | no | 0.789 | 0.8008 | REPRODUCED WITHIN TOLERANCE |
+| E101 | C2 | ablation (100→10 trees) | no | decrease | 0.8565 | CONTROL PASS (-0.021) |
+| E102 | C1 | randomized control (shuffled labels) | no | ~0.10 | 0.1134 | CONTROL PASS |
+| E005 | C5 | reproduce (Perceptron) | **yes** | 0.782 | 0.7700 | REPRODUCED WITHIN TOLERANCE |
+| A201 | C4 | ADAPTIVE ablation (raw pixels) | - | 0.511 | 0.5856 | NOT REPRODUCED |
+
+5. Hermeticity: **VERIFIED — network_block_all active, run completed**, producing exactly the same mean (0.5856) as the networked E004 from a different sandbox — S₀-rooted runs are bit-for-bit deterministic across sandboxes (SH02 likewise matched E001's 0.8111 exactly).
+6. The C4 finding is real science: scikit-learn changed Gaussian smoothing semantics after the paper era (`var_smoothing`, introduced in 0.20, is relative to data variance). The single adaptive round (prereg-002, experiment A201) tested the preregistered ambiguity A2 — raw pixels vs scaled — and produced an identical 0.5856, eliminating preprocessing as the explanation and leaving library-era behavior as the cause. Primary verdicts were untouched, per the invariant.
+7. The sham twins demonstrate both edges: SH02 (corrupting a drift-stable claim) fails cleanly as designed; SH01 (corrupting C4 by +0.05) accidentally landed near C4's true modern value — which is why the sham policy now corrupts drift-stable claims.
+8. The thin "what survived" app (P5) deploys to a container sandbox with one API endpoint (`/api/verdicts`) plus one static page showing the graded table and run lineage; `scripts/publish_results.py` prints the preview URL and a signed share URL (signed URLs cap at 24 hours — an empirical API limit).
 
 ## 7. Deliberate cuts (do not re-add)
 
@@ -75,6 +94,8 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 
 1. Scaffold, Day-0 verification, orchestrator spine — done, unit-tested, verified live.
 2. P1 archaeology + S₀ freeze + boot-verify — proven live on the calibration paper.
-3. Prereg freeze + held-out annex + manifest gate + P2 executor + sham + hermeticity + P3 verdicts — built; live calibration verdict run in progress.
-4. LLM roles (Planner/Implementer/Verifier/Builder) built behind deterministic validation; they require `ANTHROPIC_API_KEY` at runtime and are optional for the deterministic path.
-5. P4 adaptive round and P5 thin build with deterministic fallback — built.
+3. Prereg freeze + held-out annex + manifest gate + P2 executor + sham + hermeticity + P3 verdicts — proven live end-to-end; the full graded verdict table above ran on the event account, with canonical artifacts in `results/calibration/`.
+4. P4 adaptive round — executed live (prereg-002, A201) and eliminated a preregistered ambiguity hypothesis.
+5. P5 thin build — deployed live to a sandbox with preview + signed URLs.
+6. LLM roles (Planner/Implementer/Verifier/Builder) built behind deterministic validation; they require `ANTHROPIC_API_KEY` at runtime and are optional for the deterministic path.
+7. G2/GPU dormant pending a GPU-credit allocation on the dashboard Wallet page (separate from the general credit balance; probes confirm the refusal is credit-gated, not capability-gated).

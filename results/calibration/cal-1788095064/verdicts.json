@@ -1,0 +1,162 @@
+{
+  "run_id": "cal-1788095064",
+  "prereg_hash": "8463f589613c06cfad58deb17cdd88c5cd0a7cbaf29e6f315c0f4a1e65d7f6f6",
+  "verdicts": [
+    {
+      "experiment_id": "E001",
+      "claim_id": "C1",
+      "rule_id": "R-E001",
+      "type": "reproduce",
+      "observed": 0.81112,
+      "delta": 0.01312,
+      "verdict": "REPRODUCED WITHIN TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-14300f94a6aa",
+        "att-f39aca1b9cf4"
+      ]
+    },
+    {
+      "experiment_id": "E002",
+      "claim_id": "C2",
+      "rule_id": "R-E002",
+      "type": "reproduce",
+      "observed": 0.87776,
+      "delta": 0.00476,
+      "verdict": "REPRODUCED WITHIN TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-366869910e1c",
+        "att-5c32261d9f13"
+      ]
+    },
+    {
+      "experiment_id": "E003",
+      "claim_id": "C3",
+      "rule_id": "R-E003",
+      "type": "reproduce",
+      "observed": null,
+      "delta": null,
+      "verdict": "NOT ATTEMPTABLE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-c018384fc57e",
+        "att-b4d951946d87"
+      ]
+    },
+    {
+      "experiment_id": "E004",
+      "claim_id": "C4",
+      "rule_id": "R-E004",
+      "type": "reproduce",
+      "observed": 0.5856,
+      "delta": 0.0746,
+      "verdict": "NOT REPRODUCED",
+      "held_out": false,
+      "attempt_ids": [
+        "att-d10f3ca743fa",
+        "att-244cd3f558da"
+      ]
+    },
+    {
+      "experiment_id": "E006",
+      "claim_id": "C7",
+      "rule_id": "R-E006",
+      "type": "reproduce",
+      "observed": 0.80084,
+      "delta": 0.01184,
+      "verdict": "REPRODUCED WITHIN TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-c43c8f557129"
+      ]
+    },
+    {
+      "experiment_id": "E101",
+      "claim_id": "C2",
+      "rule_id": "R-E101",
+      "type": "ablation",
+      "observed": 0.85652,
+      "delta": -0.02124,
+      "verdict": "CONTROL PASS",
+      "held_out": false,
+      "attempt_ids": [
+        "att-567132a466e8"
+      ]
+    },
+    {
+      "experiment_id": "E102",
+      "claim_id": "C1",
+      "rule_id": "R-E102",
+      "type": "randomized_control",
+      "observed": 0.11336,
+      "delta": 0.01336,
+      "verdict": "CONTROL PASS",
+      "held_out": false,
+      "attempt_ids": [
+        "att-3bc16a7fe4e2"
+      ]
+    },
+    {
+      "experiment_id": "E005",
+      "claim_id": "C5",
+      "rule_id": "R-E005",
+      "type": "reproduce",
+      "observed": 0.76996,
+      "delta": -0.01204,
+      "verdict": "REPRODUCED WITHIN TOLERANCE",
+      "held_out": true,
+      "attempt_ids": [
+        "att-49d59618df40"
+      ]
+    }
+  ],
+  "sham": [
+    {
+      "experiment_id": "SH01",
+      "claim_id": "C4",
+      "rule_id": "R-SH01",
+      "type": "reproduce",
+      "observed": 0.5856,
+      "delta": 0.0246,
+      "verdict": "REPRODUCED OUTSIDE PREREGISTERED TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-f53a3e405d3c"
+      ]
+    },
+    {
+      "experiment_id": "SH02",
+      "claim_id": "C1",
+      "rule_id": "R-SH02",
+      "type": "reproduce",
+      "observed": 0.81112,
+      "delta": -0.03688,
+      "verdict": "NOT REPRODUCED",
+      "held_out": false,
+      "attempt_ids": [
+        "att-e2cccc7754b7"
+      ]
+    }
+  ],
+  "hermeticity": "VERIFIED - network_block_all active, run completed (mean=0.5856)",
+  "failures": {
+    "E003": "Failed to stop sandbox: Sandbox state change in progress"
+  },
+  "framing": "failure to reproduce is evidence the paper as written is insufficient to reconstruct the result - not evidence the authors are wrong",
+  "adaptive": [
+    {
+      "experiment_id": "A201",
+      "claim_id": "C4",
+      "rule_id": "R-A201",
+      "type": "ablation",
+      "observed": 0.5856,
+      "delta": 0.0746,
+      "verdict": "NOT REPRODUCED",
+      "held_out": false,
+      "attempt_ids": [
+        "att-438e89df8e17"
+      ]
+    }
+  ]
+}

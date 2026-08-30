@@ -104,7 +104,7 @@ def deploy(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run_id: str
         log = adapter.exec(sid, f"cat {APP_DIR}/server.log").output[-1000:]
         raise RuntimeError(f"app failed to start ({r.output.strip()}):\n{log}")
     preview = adapter.preview_url(sid, PORT)
-    signed = adapter.signed_preview_url(sid, PORT, expires_in_seconds=7 * 86400)
+    signed = adapter.signed_preview_url(sid, PORT, expires_in_seconds=86400)  # 24h is the max
     ledger.log_event(run_id, "build_deployed", {
         "sandbox_id": sid, "preview_url": preview, "signed_url": signed,
     })
