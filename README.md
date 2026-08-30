@@ -83,14 +83,29 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 7. The sham twins demonstrate both edges: SH02 (corrupting a drift-stable claim) fails cleanly as designed; SH01 (corrupting C4 by +0.05) accidentally landed near C4's true modern value — which is why the sham policy now corrupts drift-stable claims.
 8. The thin "what survived" app (P5) deploys to a container sandbox with one API endpoint (`/api/verdicts`) plus one static page showing the graded table and run lineage; `scripts/publish_results.py` prints the preview URL and a signed share URL (signed URLs cap at 24 hours — an empirical API limit).
 
-## 7. Deliberate cuts (do not re-add)
+## 7. Architecture v2 additions
+
+1. Binding design document: `ARCHITECTURE.md` (v2); live task checklist and gap analysis in `PROGRESS.md`; user-local handoff notes in `HANDBACK.md`.
+2. Claims carry a generalized `condition` object (arbitrary experimental setting); legacy dataset/split claims are normalized automatically. Ambiguity ledger entries are typed: `unstated_choice / equation_ambiguity / version_dependent_default`.
+3. Monte Carlo tolerance rule for simulation-table papers: `build_mc_rule` — at least the paper's replication count, tolerance k×SE (default 3), distribution-match never bitwise; the verdict engine refuses under-replicated evidence as INCONCLUSIVE.
+4. One validation choke point for agent actions (`repro/orchestrator/actions.py`): agents emit `{"action": "run"|"write"|"search", ...}` only; search routes through the capped Parallel client; the P2 executor imports no model client.
+5. Search-on-failure in archaeology (`run_with_recovery`): a repeated error signature earns one environment-mechanics search, then retry; degrades to blind retry with Parallel off.
+6. Code delivery is a deterministic tarball at a pinned SHA (`deliver_candidate`), verified after landing — no clone path exists.
+7. `data_mode: synthetic`: staging is a no-op and experiments generate data from the manifest's preregistered `condition` (gated like every other manifest field).
+8. Ledger-only rerun: the frozen manifest is persisted at execution time; `repro rerun --ledger ... --attempt ... --run-dir ...` reconstructs and re-executes an attempt with no agent memory involved.
+9. Intake gates: a paper-class classifier (`1 reported_numbers` proceeds; classes 2–4 decline by name) and a three-outcome code-existence gate (`NOT_FOUND` / `REFERENCED_BUT_DEAD` proceed, `FOUND` declines with the certificate as output) whose certificates carry metadata only — code contents never enter any model context.
+10. Local dashboard: `repro dashboard --ledger <db> --evidence-root <dir>` — one stdlib server, one page: run grid, attempt statuses, verdict table, evidence file links.
+11. Demo preview lifecycle: `deploy(..., demo_window=True)` keeps the build sandbox on `auto_stop=0` with a 12h TTL; pushes of the output refuse without an explicit G3 approval.
+12. `scripts/day0.py` prints a pass/fail Day-0 report; `DAYTONA_LIVE=1 pytest tests/test_live_integration.py` mirrors the archaeology and executor acceptance against the real API (opt-in, run locally).
+
+## 8. Deliberate cuts (do not re-add)
 
 1. Batch-parent launcher (create-from-S₀ replaces it; fork is unavailable on this account anyway).
 2. Parallel for ambiguity resolution or any method-semantics lookup — unresolvable gaps become UNDER-CONSTRAINED, which is a finding, not a failure.
 3. Skeptic as a runtime agent (fixed menu + one adaptive round instead).
 4. Hot snapshots / memory persistence, GROBID/PDF toolchain, predictions files by default, open-ended reasoning checking, multi-paper corpus mode.
 
-## 8. Status
+## 9. Status
 
 1. Scaffold, Day-0 verification, orchestrator spine — done, unit-tested, verified live.
 2. P1 archaeology + S₀ freeze + boot-verify — proven live on the calibration paper.
