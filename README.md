@@ -39,6 +39,23 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 4. `.venv/bin/pytest` to run the unit tests.
 5. `.venv/bin/python scripts/day0_check.py` to run the live Day-0 verification (creates and deletes small labeled sandboxes; minimal spend).
 
-## 5. Status
+## 5. Day-0 verification (live, against the event account)
+
+Run: `python scripts/day0_check.py`. Findings so far:
+
+1. `create_snapshot` is a public method on SDK 0.207.0 (the experimental name survives as an alias) and works live: a container was frozen in 29.2s and a new sandbox booted from the frozen snapshot in 3.6s with state preserved. The S₀ freeze-and-spawn loop is confirmed viable.
+2. The `linux-vm` sandbox class is not available on this account in either region (`daytona-vm-*` snapshots carry no regions). Consequently `fork()` is unavailable too — containers reject it with "Forking is not supported for this sandbox". Spawn policy is therefore create-from-S₀ only; the `spawn_mode: fork` path stays in config but is marked unavailable.
+3. Container create-from-snapshot latency is 0.5–1.7s. Concurrency probe: at least 6 concurrent sandboxes with no quota error.
+4. Volumes are created asynchronously (`pending_create` → `ready` in ~4s); creation must wait for ready before mounting. `VolumeMount` has no read-only flag, so dataset integrity is enforced by checksum re-verification at experiment start.
+5. `resize()` is not available for containers (the endpoint 404s). Sandbox size is fixed at creation by choosing the base snapshot (`daytona-small` 1cpu/1GiB/3GiB, `daytona-medium` 2/4/8, `daytona-large` 4/8/10).
+6. GPU sandboxes must be ephemeral (`auto_delete_interval=0`), matching the design; actual creation is blocked until the organization wallet has GPU credits. The G2 stage stays dormant until then.
+7. Organization/tier endpoints require user auth, not an API key — tier verification is a manual dashboard step, as is checking whether signup credits stack with event credits.
+8. Parallel Search round-trip: HTTP 200 with results — the key and the code-absence call site are verified.
+9. The generated SDK clients ignore proxy environment variables; on proxied networks every SDK call bypasses the proxy and dies. `repro/orchestrator/daytona_client.py` patches the client configuration to honor `HTTPS_PROXY`/`SSL_CERT_FILE` (a no-op elsewhere).
+10. Sandbox exec/file operations travel via the region runtime host (`proxy.app-eu.daytona.io` / `proxy.app-us.daytona.io`), a different domain from the control plane — network policies must allow those hosts too.
+
+## 6. Status
 
 1. Project scaffold in place.
+2. Day-0 verification script written and run live; findings above.
+3. Orchestrator spine built and unit-tested: append-only ledger (runs/attempts/verdicts/datasets/events), gate state machine (G1/G2/G3), budget ceilings, lifecycle policies with kill switch (delete-by-label, children first).
