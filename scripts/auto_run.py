@@ -139,17 +139,21 @@ def run_auto(
     (run_dir / "build.json").write_text(json.dumps(
         {"result": build_result, "proposal_claims": [c["id"] for c in claims]}, indent=2))
     if not build_result or not build_result["ok"]:
-        log(f"P1 FAILED after {MAX_ITERATIONS} rounds; no S0. Run recorded, no experiments run.")
+        lost = bool(build_result and build_result.get("environment_lost"))
+        why = ("NOT RUN - the archaeology sandbox was deleted mid-build; this is an "
+               "environment failure, not a failed reproduction"
+               if lost else "NOT RUN - build never passed the smoke gate")
+        log(f"P1 FAILED after {build_result['iterations'] if build_result else 0} rounds"
+            + (" (environment lost)" if lost else "") + "; no S0.")
         rows = [{"experiment_id": e["experiment_id"], "claim_id": e["claim_id"],
                  "rule_id": e["rule"].get("id"), "type": e["type"], "observed": None,
                  "delta": None, "verdict": "NOT ATTEMPTABLE", "held_out": False,
                  "attempt_ids": []} for e in doc["experiments"]]
         (run_dir / "verdicts.json").write_text(json.dumps(
             {"run_id": run_id, "prereg_hash": prereg_hash, "verdicts": rows, "sham": [],
-             "hermeticity": "NOT RUN - build never passed the smoke gate",
+             "hermeticity": why, "environment_lost": lost,
              "framing": doc["framing"], "build": build_result}, indent=2))
-        report = generate_report(run_id, doc, rows, [],
-                                 "NOT RUN - build never passed the smoke gate", ledger,
+        report = generate_report(run_id, doc, rows, [], why, ledger,
                                  paper.get("title", str(paper_dir)), code_absence=certificate)
         (run_dir / "report.md").write_text(report)
         (run_dir / "handle.json").write_text(json.dumps(

@@ -224,3 +224,15 @@ def test_kill_stray_treats_a_run_still_writing_as_live(tmp_path):
     assert set(live) == {"run-live"}
     assert kill_stray.live_runs(0, [str(path)]) == {}  # opt out sweeps on labels alone
     assert kill_stray.live_runs(15.0, [str(tmp_path / "missing.db")]) == {}
+
+
+@pytest.mark.parametrize("text,lost", [
+    ('Failed to upload files: 404: {"message":"not found: sandbox c70b6369 not found"}', True),
+    ("sandbox is not running", True),
+    ("smoke.sh: line 3: python: command not found", False),
+    ("ModuleNotFoundError: No module named 'numpy'", False),
+])
+def test_a_vanished_sandbox_is_not_a_build_failure(text, lost):
+    from repro.auto.build import is_environment_lost
+
+    assert is_environment_lost(text) is lost

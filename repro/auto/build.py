@@ -16,6 +16,22 @@ from .contract import SYNTHETIC_FALLBACK, implementer_system, validate_proposal
 
 MAX_ITERATIONS = 4
 
+# a build round can only fail in a way the Implementer can act on if the sandbox
+# is still there; when the box itself is gone the round says nothing about the
+# proposal, and spending the remaining budget on it would record a build failure
+# for something that never got to build
+INFRA_MARKERS = ("not found: sandbox", "sandbox not found", "sandbox has been destroyed",
+                 "sandbox is not running", "sandbox is in state destroyed")
+
+
+class EnvironmentLost(RuntimeError):
+    """The archaeology sandbox went away underneath the build loop."""
+
+
+def is_environment_lost(text: str) -> bool:
+    low = text.lower()
+    return any(m in low for m in INFRA_MARKERS)
+
 
 def _redact(text: str, secrets: list[str]) -> str:
     """Never let a key reach the ledger or the console."""
@@ -102,6 +118,16 @@ def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
             session.smoke()
         except (ArchaeologyError, Exception) as e:  # noqa: BLE001 - any build failure retries
             detail = _redact(str(e), secrets)[:1200]
+            if is_environment_lost(detail):
+                attempt.update(stage="environment_lost", error=detail)
+                attempts.append(attempt)
+                ledger.log_event(run_id, "environment_lost",
+                                 {"iteration": i, "error": detail[:800]})
+                log(f"  round {i}: ABORT - the sandbox is gone, not a build failure: "
+                    f"{detail.splitlines()[0][:160]}")
+                return {"ok": False, "iterations": i, "attempts": attempts,
+                        "degraded": False, "environment_lost": True,
+                        "last_feedback": feedback}
             attempt.update(stage="apply_or_smoke", error=detail)
             attempts.append(attempt)
             ledger.log_event(run_id, "implementer_round_failed",
