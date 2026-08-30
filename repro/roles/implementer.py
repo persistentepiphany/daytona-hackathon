@@ -51,9 +51,19 @@ def propose(provider: LLMProvider, method_spec: str, feedback: list[dict] | None
     return proposal
 
 
-def apply_proposal(session, proposal: dict) -> None:
-    """Replay an implementer proposal through the archaeology session (recorded)."""
-    for path, content in proposal["files"].items():
-        session.put_file(path, content)
-    for cmd in proposal["commands"]:
-        session.sh(cmd)
+def to_actions(proposal: dict) -> list[dict]:
+    """Convert a proposal into the structured-action form the orchestrator's
+    choke point validates: files become write actions, commands become run
+    actions, in application order."""
+    actions = [{"action": "write", "path": p, "content": c}
+               for p, c in proposal["files"].items()]
+    actions += [{"action": "run", "cmd": cmd} for cmd in proposal["commands"]]
+    return actions
+
+
+def apply_proposal(session, proposal: dict, parallel=None) -> None:
+    """Replay an implementer proposal through the single validation choke point."""
+    from ..orchestrator.actions import apply_action
+
+    for action in to_actions(proposal):
+        apply_action(session, action, parallel=parallel)

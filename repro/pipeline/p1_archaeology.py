@@ -98,3 +98,41 @@ class ArchaeologySession:
 
     def teardown(self) -> None:
         self.lifecycle.delete(self.sandbox_id)
+
+
+def run_with_recovery(session: ArchaeologySession, cmd: str, parallel=None,
+                      max_attempts: int = 3):
+    """Search-on-failure: retry a failing environment command; once the same error
+    signature recurs, one Parallel search may resolve environment mechanics
+    (versions, mirrors, build flags — never method semantics; the client's stage
+    gate and per-session cap enforce the budget). With Parallel absent or
+    disabled, this degrades to blind retry.
+    """
+    last_sig = None
+    searched = False
+    result = None
+    for attempt in range(max_attempts):
+        result = session.sh(cmd, check=False)
+        if result.exit_code == 0:
+            return result
+        lines = [ln for ln in result.output.strip().splitlines() if ln.strip()]
+        sig = lines[-1][:200] if lines else "unknown-error"
+        session.ledger.log_event(session.run_id, "recovery_attempt", {
+            "cmd": cmd, "attempt": attempt + 1, "signature": sig,
+        })
+        if sig == last_sig and not searched and parallel is not None:
+            try:
+                hits = parallel.search(
+                    "archaeology",
+                    f"resolve environment build/install error: {sig}",
+                    [sig], max_results=5,
+                )
+                searched = True
+                session.ledger.log_event(session.run_id, "recovery_search", {
+                    "signature": sig, "n_results": len(hits),
+                })
+            except Exception:
+                pass  # disabled or capped: fall back to blind retry
+        last_sig = sig
+    raise ArchaeologyError(f"command failed after {max_attempts} attempts: {cmd}\n"
+                           f"{(result.output if result else '')[-1000:]}")
