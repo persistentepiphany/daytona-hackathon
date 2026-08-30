@@ -29,7 +29,8 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 4. `repro/calibration/fashion_mnist.py` — the hand-written recipe and candidate code proving the loop before any LLM writes code.
 5. `papers/fashion-mnist/` — calibration paper metadata, transcribed claims, ambiguity ledger.
 6. `scripts/` — `day0_check.py` (live account verification), `run_calibration_p1.py` (prereg → G1 → stage → archaeology → freeze → boot-verify), `run_calibration_p2.py` (experiments + sham + hermeticity → verdicts).
-7. `tests/` — unit tests against an in-memory fake adapter plus env-key fallback; no network needed.
+7. `repro/telemetry.py`, `repro/logtap.py`, `repro/feed.py`, `repro/estimates.py` — the live feed (section 10): the event bus and its single redaction site, the sandbox log tap, the SSE endpoint and page, and the completion estimates.
+8. `tests/` — unit tests against an in-memory fake adapter plus env-key fallback; no network needed.
 
 ## 4. Setup and usage
 
@@ -58,6 +59,9 @@ run ends — the `s0-<run_id>` snapshot each run freezes (~14.5 GB of registry
 storage apiece) and the P5 preview sandbox, which `kill_stray.py` deliberately
 preserves — so `repro gc` is what keeps the ceiling from creeping down over a day
 of runs.
+
+13. `repro feed --ledger <ledger.db> --run-id <id>` — the live feed on `127.0.0.1:8700` (section 10). Add `--replay paced --speed 4` to play a finished run back.
+14. `REPRO_TELEMETRY=1` — turn the live feed on for a run. **It is off by default**, and off means off: no feed events, no sandbox log tap, no extra provider calls. The feed's own scripts set it themselves, so only a hand-run pipeline needs to. Exactly what does and does not differ is stated in section 10.
 
 ## 5. Day-0 verification (live, against the event account)
 
@@ -130,3 +134,109 @@ of runs.
 6. LLM roles (Planner/Implementer/Verifier/Builder) built behind deterministic validation; they require `ANTHROPIC_API_KEY` at runtime and are optional for the deterministic path.
 7. G2/GPU dormant pending a GPU-credit allocation on the dashboard Wallet page (separate from the general credit balance; probes confirm the refusal is credit-gated, not capability-gated).
 8. Architecture v2 deltas implemented additively and accepted on the fake client (40 tests + 2 live-gated skips); see section 7, `PROGRESS.md`, and `HANDBACK.md`.
+
+## 10. Live feed
+
+The dashboard in section 3 reads the ledger after the fact. The feed shows a run while it
+happens: what the agents are doing, what they are building, and how much longer the
+work can take.
+
+It is **opt-in**. With `REPRO_TELEMETRY` unset a run behaves exactly as it did before
+the feed existed — the bus emits nothing, and the executor starts no log tap, so a
+sandbox sees no extra sessions and no marker file. `REPRO_TELEMETRY=1` turns it on;
+`scripts/feed_driver.py`, `scripts/live_microrun.py` and `scripts/record_calibration.py`
+do that for themselves.
+
+### Opening it
+
+1. `repro feed --ledger runs/<...>/ledger.db --run-id <id>` then open
+   `http://127.0.0.1:8700/?run_id=<id>`. It binds loopback only — no auth layer, no
+   framework, no websockets between page and server, and no hosting.
+2. Drivers can serve it inside their own process instead, so a live run and the page
+   watching it share one bus and one port: `scripts/record_calibration.py` and
+   `scripts/live_microrun.py` both do, and print the URL on startup.
+3. `scripts/feed_driver.py` needs neither a sandbox nor a model key: it pushes scripted
+   `write`/`run` actions through the real action choke point, so what appears in the
+   browser is produced by the same code path a real run uses.
+
+### From the run API
+
+`server.py` runs each reproduction in its own process, so a run started over HTTP can be
+watched while it happens:
+
+1. `POST /runs` as usual — the worker now sets `REPRO_TELEMETRY=1` for the run it spawns.
+2. `GET /runs/{job_id}` reports a `feed_url`.
+3. Open `GET /runs/{job_id}/feed` in a browser. It streams from
+   `GET /runs/{job_id}/events`, which tails that run's ledger — the same path replay
+   uses, because the run is in a different process and there is no shared bus.
+
+Opening the feed before the run has picked a run id waits rather than failing.
+
+### Replay mode
+
+`--replay paced --speed N` (or `?replay=paced&speed=N` on the URL) replays a finished
+run at its recorded pace, divided by N. Replay is not a test fixture — it is a
+first-class way to watch a run, and it exercises the same endpoint, reducers and page as
+a live one. A finished run's ledger is all it needs, so a run recorded on one machine
+plays back on another.
+
+### The two bar styles
+
+The timing strip distinguishes what was measured from what is merely bounded, because
+conflating the two is how an honest progress display starts lying:
+
+1. **Solid bar — measured.** Completed attempts out of planned, and a fleet band from a
+   queue simulation over the pool width using the median duration of attempts that have
+   actually finished (this run first, then ledger history for the same paper, then the
+   configured default). It is shown as a range, never a single number, and it is
+   labelled with how many samples it rests on. With no measurements yet, the band is
+   withheld entirely rather than filled in from a config value.
+2. **Hollow bar — the ceiling.** Not an estimate at all: the sum of remaining sandbox
+   TTLs, bounded by the run's remaining budget. Sandboxes are charged for their whole
+   TTL before they are created and the budget refuses to overspend, so the run cannot
+   cross this line. It is always displayed.
+
+Per-attempt progress is `elapsed/k × (n−k)` over that attempt's own completed seeds — a
+measured rate, reported only once at least one seed has finished. While an implementer
+round is outstanding no whole-run completion time is shown at all, because the number of
+further rounds is not knowable; LLM turns show elapsed time only.
+
+### What is and is not identical with the feed off
+
+Precisely, because "additive" is worth stating exactly rather than loosely:
+
+1. **Evidence is byte-identical.** `manifest.json`, `metrics.json`, `stdout.log`,
+   `leakage.json`, `checksums.json` and the `evidence_sha` derived from them are the same
+   bytes either way — progress goes to its own side-channel file that is never collected,
+   and the executor's command, redirect and environment are untouched.
+   `tests/test_additivity.py` compares two runs file by file, and asserts the sandbox
+   call surface is identical too.
+2. **Ledger rows are identical**, in every table, with the events table carrying only
+   the pre-existing kinds.
+3. Three things do differ, none of which changes an output. The `events` table gains an
+   index. Its payloads pass through redaction whether the feed is on or off — deliberate,
+   since a run with the feed off must not write a leakier table than one with it on, and
+   a no-op unless a payload actually contains a credential. And the ledger is converted
+   to SQLite's WAL journal mode, which is persistent in the file: copy a `ledger.db`
+   without its `-wal` sidecar and you can lose the tail of a run.
+
+### What the feed will not carry
+
+Events carry display tails, never canonical artifacts: a patch event carries the head of
+a hunk and the path of the full diff on disk, an observation carries an output tail. The
+evidence files remain the only source of truth.
+
+Redaction (`sk-ant-*`, `ghp_*`, `github_pat_*`, and generic `key`/`token`/`secret`
+assignments) happens inside `emit()` and nowhere else, so no call site can leak by
+forgetting to scrub. It is not behind the on/off flag — a run with the feed off must not
+write a leakier events table than one with it on.
+
+The annex's contents never appear: no event of any kind carries a held-out claim's
+reported value, its tolerance or its decision rule. Being precise about what the feed
+does show — a held-out experiment appears as an attempt, with its state and its seed
+progress, since the operator chose the split at G1 and the feed is theirs — but its
+output is replaced by a byte count, because its stdout carries the observed value the
+annex exists to withhold. Held-out claims are still scored only at P3, exactly as before.
+
+The verifier is visible only as an `agent.action` saying its evidence bundle was
+delivered, and as the verdicts it produced.

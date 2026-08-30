@@ -17,6 +17,16 @@ class ExecResult:
 
 
 @dataclass
+class AsyncCmd:
+    """Handle for a command running in a sandbox session, so its output can be followed
+    while it runs. Synchronous `exec` remains the executor's path; this exists only for
+    the log tap."""
+    sandbox_id: str
+    session_id: str
+    cmd_id: str
+
+
+@dataclass
 class CreateSpec:
     name: str
     labels: dict[str, str]
@@ -65,3 +75,11 @@ class SandboxAdapter(Protocol):
     def list_sandboxes(self) -> list[dict]: ...
 
     def preview_url(self, sandbox_id: str, port: int) -> str: ...
+
+    # --- async session commands: used by the live feed's log tap only ---
+    def exec_async(self, sandbox_id: str, cmd: str, cwd: str | None = None,
+                   env: dict[str, str] | None = None) -> AsyncCmd: ...
+
+    def follow_logs(self, handle: AsyncCmd, on_stdout, on_stderr=None) -> None: ...
+
+    def cancel_async(self, handle: AsyncCmd) -> None: ...

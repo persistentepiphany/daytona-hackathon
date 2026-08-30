@@ -52,14 +52,29 @@ Artifacts land in `runs/auto/<run_id>/`: `prereg.json` (model-written contract),
 Exit codes: `0` graded verdicts produced · `2` smoke gate never passed within
 4 rounds (no S₀, no experiments) · `3` S₀ built but nothing graded.
 
-## 3. Dashboard and tests
+## 3. Web UI (Snapshot chat → Render API)
+
+```bash
+# .env needs:
+#   REPRO_API_ORIGIN=https://daytona-repro-api.onrender.com
+#   REPRO_API_TOKEN=<bearer from Render>
+pnpm dev                      # Vite on :3000; /api/* proxied to Render (token injected on POST)
+```
+
+Open http://127.0.0.1:3000/dashboard — pick `fashion-mnist` or `best-scored-rf`.
+GET routes are public; POST `/runs` is authenticated by the Vite/Express proxy so the
+browser never sees the bearer token. Runs serialize one-at-a-time on the API.
+
+Backend branch: `render-backend` (auto-deploys). `main` stays the verified CLI path.
+
+## 4. Dashboard and tests
 
 ```bash
 repro dashboard --ledger runs/e2e/ledger.db --evidence-root runs/e2e   # 127.0.0.1:8600
-python -m pytest -q                                                    # 47 passed, 2 skipped
+python -m pytest -q                                                    # unit suite
 ```
 
-## 4. Status of the autonomous path
+## 5. Status of the autonomous path
 
 **Green.** Run `auto-1788099837` produced a graded verdict with no
 hand-written code anywhere in the path.

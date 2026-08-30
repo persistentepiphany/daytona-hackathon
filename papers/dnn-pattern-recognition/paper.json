@@ -1,0 +1,10 @@
+{
+  "paper_id": "dnn-pattern-recognition",
+  "title": "Deep Neural Networks for Pattern Recognition",
+  "authors": ["Kyongsik Yun", "Alexander Huyen", "Thomas Lu"],
+  "arxiv_id": "1905.11028",
+  "pdf_url": "https://arxiv.org/pdf/1905.11028",
+  "pdf_sha256": "428b1c99168475b1eb742f52c2e1375e105365546b35939db8514db08d11e0a6",
+  "role": "candidate",
+  "notes": "Second-paper demo target. Extract lives in paper-extract.txt; code_absence is empty so the intake gate proceeds as NOT_FOUND."
+}

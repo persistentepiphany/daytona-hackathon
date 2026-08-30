@@ -99,5 +99,12 @@ def judge_run(prereg: dict, annex: dict, evidence_root: str | Path,
                               None if row["observed"] is None else str(row["observed"]),
                               None if row["delta"] is None else str(row["delta"]),
                               row["verdict"], attempts)
+        # the verdict is a published output, so it may stream; the annex's target and
+        # tolerance - the part that is actually held out - are not in this payload
+        ledger.bus.emit(run_id, "verdict.emitted", {
+            "claim_id": row["claim_id"], "verdict": row["verdict"],
+            "attempt_id": attempts[-1] if attempts else None,
+            "experiment_id": row["experiment_id"], "held_out": row["held_out"],
+        })
         rows.append(row)
     return rows

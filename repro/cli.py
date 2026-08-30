@@ -132,6 +132,14 @@ def cmd_dashboard(args) -> int:
     return 0
 
 
+def cmd_feed(args) -> int:
+    from .feed import serve
+
+    serve(args.ledger, args.evidence_root, args.port, default_run=args.run_id,
+          width=args.width, force_replay=args.replay, force_speed=args.speed)
+    return 0
+
+
 def cmd_build(args) -> int:
     from .orchestrator.budget import Budget
     from .orchestrator.daytona_client import DaytonaAdapter
@@ -190,6 +198,17 @@ def main(argv: list[str] | None = None) -> int:
                    help="never touch anything younger than this")
     g.add_argument("--dry-run", action="store_true")
     g.set_defaults(fn=cmd_gc)
+
+    f = sub.add_parser("feed", help="serve the live run feed (SSE) over the ledger")
+    f.add_argument("--ledger", required=True)
+    f.add_argument("--run-id", default=None, help="default run for /events")
+    f.add_argument("--evidence-root", default="runs")
+    f.add_argument("--port", type=int, default=8700)
+    f.add_argument("--width", type=int, default=2, help="pool width for the fleet estimate")
+    f.add_argument("--replay", choices=["paced"], default=None,
+                   help="replay a finished run at its recorded pace")
+    f.add_argument("--speed", type=float, default=1.0)
+    f.set_defaults(fn=cmd_feed)
 
     p = sub.add_parser("report", help="render the verdict report from persisted artifacts")
     p.add_argument("--run-dir", required=True)

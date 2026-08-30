@@ -44,8 +44,21 @@ def validate_action(action: dict) -> dict:
 
 def apply_action(session, action: dict, parallel=None, stage: str = "archaeology"):
     """Apply one validated action. run/write go through the session (recorded in
-    RECIPE.sh); search goes through the Parallel client's caps and stage gates."""
+    RECIPE.sh); search goes through the Parallel client's caps and stage gates.
+
+    This is also where the live feed observes the agents: every action the orchestrator
+    applies passes through here, so the feed's producer sits at the same choke point as
+    the validator rather than being sprinkled across call sites."""
+    from ..telemetry import action_tap
+
     a = validate_action(action)
+    tap = action_tap()
+    if tap is not None:
+        return tap.around(a, lambda: _dispatch(session, a, parallel, stage))
+    return _dispatch(session, a, parallel, stage)
+
+
+def _dispatch(session, a: dict, parallel, stage: str):
     kind = a["action"]
     if kind == "run":
         return session.sh(a["cmd"], check=bool(a.get("check", True)))

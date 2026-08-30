@@ -99,7 +99,11 @@ class ArchaeologySession:
             self.lifecycle.delete(sid)
 
     def teardown(self) -> None:
-        self.lifecycle.delete(self.sandbox_id)
+        try:
+            self.lifecycle.delete(self.sandbox_id)
+        except Exception as e:  # noqa: BLE001 - already gone is fine
+            if "not found" not in str(e).lower() and "NotFound" not in type(e).__name__:
+                raise
 
 
 def run_with_recovery(session: ArchaeologySession, cmd: str, parallel=None,

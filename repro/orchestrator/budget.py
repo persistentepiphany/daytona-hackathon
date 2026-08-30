@@ -22,17 +22,28 @@ class Budget:
         return self.ledger.sum_charges(self.run_id, kind)
 
     def charge(self, kind: str, amount: float, note: str | None = None) -> None:
-        # read-then-write under the ledger's lock: charging from two threads used
-        # to interleave with another statement mid-transaction and blow up with
-        # 'cannot commit - no transaction is active'
+        # read-then-write under one acquisition of the ledger's lock, so the ceiling
+        # check and the charge cannot interleave with another thread's charge; doing
+        # this outside the lock is what raced P2 into 'cannot commit - no transaction
+        # is active' and forced experiments to run one at a time
+        ceiling = self.ceilings.get(kind)
         with self.ledger.lock:
             spent = self.spent(kind)
-            ceiling = self.ceilings.get(kind)
             if ceiling is not None and spent + amount > ceiling:
-                raise BudgetExceeded(
-                    f"{kind}: {spent} + {amount} exceeds ceiling {ceiling} for run {self.run_id}"
-                )
-            self.ledger.add_charge(self.run_id, kind, amount, note)
+                exceeded = True
+            else:
+                exceeded = False
+                self.ledger.add_charge(self.run_id, kind, amount, note)
+                spent += amount
+        # the bus writes to the same connection, so it is emitted outside the lock
+        self.ledger.bus.emit(self.run_id, "budget.tick", {
+            "kind": kind, "spent": spent, "ceiling": ceiling,
+            **({"state": "exceeded"} if exceeded else {}),
+        })
+        if exceeded:
+            raise BudgetExceeded(
+                f"{kind}: {spent} + {amount} exceeds ceiling {ceiling} for run {self.run_id}"
+            )
 
     def remaining(self, kind: str) -> float | None:
         ceiling = self.ceilings.get(kind)

@@ -29,10 +29,15 @@ class Gates:
         except Exception as e:
             raise GateError(f"gate {gate} already approved for {run_id}") from e
         self.ledger.log_event(run_id, "gate_approved", {"gate": gate, "approver": approver})
+        self.ledger.bus.emit(run_id, "gate.changed",
+                             {"gate": gate, "state": "approved", "approver": approver})
 
     def passed(self, run_id: str, gate: str) -> bool:
         return self.ledger.has_gate(run_id, gate)
 
     def require(self, run_id: str, gate: str) -> None:
         if not self.passed(run_id, gate):
+            # a refused gate is the most informative thing the feed can show: it is the
+            # invariant doing its job, not a failure to explain away
+            self.ledger.bus.emit(run_id, "gate.changed", {"gate": gate, "state": "blocked"})
             raise GateError(f"gate {gate} not approved for run {run_id}")
