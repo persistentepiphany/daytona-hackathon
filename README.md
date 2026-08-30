@@ -44,6 +44,17 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 9. `repro report --run-dir runs/calibration/<run-id> --title "..."` — render the report from persisted artifacts.
 10. `repro build --run-dir runs/calibration/<run-id>` — deploy the what-survived page to a sandbox and print the preview URL.
 
+## 4.1 Run the landing page locally
+
+1. Use Node.js 22 LTS.
+2. Run `corepack enable` if `pnpm` is not available.
+3. Run `pnpm install`.
+4. If the lockfile is out of date, run `pnpm install --no-frozen-lockfile`.
+5. Run `pnpm dev`.
+6. Open `http://localhost:3000` in a browser. Vite selects another port if port 3000 is in use.
+
+The `@builder.io/vite-plugin-jsx-loc` package reports an unsupported Vite peer range. The landing page still runs with Vite 7.
+
 ## 5. Day-0 verification (live, against the event account)
 
 1. `create_snapshot` is public API on SDK 0.207.0 and works live: container frozen in 24–36s, fresh sandbox booted from the frozen snapshot in ~4s, **filesystem state preserved across freeze-and-boot** (verified with a marker file in `$HOME`).
