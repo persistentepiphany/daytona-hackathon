@@ -91,3 +91,23 @@ real Fashion-MNIST text through the autonomous path. That exercises the full
 no-hand-written-code path but is **not** a real code-absence pass: Fashion-MNIST
 has an official implementation, so P0 returns FOUND and the run proceeds under
 the calibration override.
+
+### Update — autonomous path is green (`auto-1788099837`)
+
+Two defects closed after the write-up above: the leakage check no longer imports
+a calibration-specific module (`repro/pipeline/runner_files.py` prefers `dataio`
+and falls back to `fashion`), and `prereg_inputs` backfills a missing
+`rule["target"]`. With those in place the run went straight through on the first
+implementer round:
+
+| Stage | Result |
+|---|---|
+| Planner contract | 2 claims (`dt_fashion_1` 0.873±0.025, `svc_fashion_1` 0.976±0.01), prereg `adc904610e833b6c` |
+| Implementer | round 1 smoke gate PASSED; wrote `train.py`, `dataio.py`, `config.json`, `smoke.sh` |
+| S₀ | `s0-auto-1788099837`, recipe `6fd074d34471` |
+| P2 / P3 | `exp_dt` observed 0.81102, delta −0.06198 → REPRODUCED OUTSIDE PREREGISTERED TOLERANCE |
+
+One row short of a full table: `exp_svc` graded NOT ATTEMPTABLE because two
+concurrent experiments raced the ledger's SQLite connection into "cannot commit
+- no transaction is active". P2 now runs one experiment at a time (commit
+22403a0); the underlying ledger concurrency is still worth fixing.

@@ -57,13 +57,30 @@ python -m pytest -q                                                    # 47 pass
 
 ## 4. Status of the autonomous path
 
-**Not green — demo the calibration path (section 1).**
+**Green.** Run `auto-1788099837` produced a graded verdict with no
+hand-written code anywhere in the path.
 
-The autonomous path builds a model-written contract and a model-written S₀
-reliably (3 of 3 attempts reached a passing smoke gate, one of them recovering
-from two failed rounds), but no run has produced graded verdicts yet. Two
-defects are open; both are written up in PROGRESS.md under "Autonomous driver".
-The branch `auto-driver` is pushed and deliberately unmerged.
+```
+P1 round 1: smoke gate PASSED         # GLM-4.6 wrote train.py, dataio.py, config.json, smoke.sh
+P1 S0 frozen s0-auto-1788099837
+P2 exp_dt mean=0.81102
+P3 exp_dt dt_fashion_1 observed=0.81102 -> REPRODUCED OUTSIDE PREREGISTERED TOLERANCE
+```
 
-Live preview URL (from the calibration path, run `e2e-1788097734`):
-`https://8000-886e29d5-2053-45f4-806a-cba62608aca1.daytonaproxy01.eu`
+Reproduce it:
+
+```bash
+python scripts/auto_run.py              # paper text -> contract -> S0 -> experiments -> verdicts
+python scripts/publish_auto.py          # deploy the preview for the latest autonomous run
+```
+
+Live preview (autonomous run `auto-1788099837`):
+`https://8000-b531aa54-89c3-4c19-b6ce-625bc5ed1155.daytonaproxy01.eu`
+
+Committed artifacts: `results/auto/auto-1788099837/` — `prereg.json` (the
+model-written contract), `build.json` (the implementer round and the four files
+it wrote, by sha256), `verdicts.json`, `report.md`, `evidence/`.
+
+Known gap in this run: the second experiment (`exp_svc`) graded NOT ATTEMPTABLE
+because two concurrent experiments raced the ledger's SQLite connection. P2 is
+serialized as of commit 22403a0, so a rerun grades both rows.
