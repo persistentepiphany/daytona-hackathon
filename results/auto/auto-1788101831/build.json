@@ -1,0 +1,68 @@
+{
+  "result": {
+    "ok": false,
+    "iterations": 4,
+    "attempts": [
+      {
+        "iteration": 1,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 10,
+        "stage": "apply_or_smoke",
+        "error": "command failed (35): curl -s -o localdata/monks-2.train https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train\n"
+      },
+      {
+        "iteration": 2,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 5,
+        "stage": "apply_or_smoke",
+        "error": "command failed (1): venv/bin/python -c \"import requests, os, json, sys; d='localdata'; os.makedirs(d, exist_ok=True); [open(f'{d}/{n}', 'wb').write(requests.get(u).content) for n,u in [('monks-2.train', 'https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('monks-2.test', 'https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.test'), ('breast-cancer-wisconsin.data', 'https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('ILPD.csv', 'https://archive.ics.uci.edu/static/public/225/ilpd.csv')] ]\"\n/ssl.py\", line 1372, in do_handshake\n    self._sslobj.do_handshake()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~^^\nurllib3.exceptions.ProtocolError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import requests, os, json, sys; d='localdata'; os.makedirs(d, exist_ok=True); [open(f'{d}/{n}', 'wb').write(requests.get(u).content) for n,u in [('monks-2.train', 'https://archive.ics.uci.edu/ml/machine-learning-da"
+      },
+      {
+        "iteration": 3,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 5,
+        "stage": "apply_or_smoke",
+        "error": "command failed (1): venv/bin/python -c \"import requests, os; d='localdata'; os.makedirs(d, exist_ok=True); urls=[('breast-cancer-wisconsin.data','https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('monks-2.train','https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('ILPD.csv','https://archive.ics.uci.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\"\n the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import requests, os; d='localdata'; os.makedirs(d, exist_ok=True); urls=[('breast-cancer-wisconsin.data','https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('monks-2.train','https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('ILPD.csv','https://archive.ics.uci.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\n                                                                "
+      },
+      {
+        "iteration": 4,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 5,
+        "stage": "apply_or_smoke",
+        "error": "command failed (1): python3 -c \"import requests, os, sys; d='localdata'; os.makedirs(d, exist_ok=True); urls=[('breast-cancer-wisconsin.data','https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('monks-2.train','https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('ilpd.csv','https://archive.ics.uci.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\"\nr(104, 'Connection reset by peer'))\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import requests, os, sys; d='localdata'; os.makedirs(d, exist_ok=True); urls=[('breast-cancer-wisconsin.data','https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('monks-2.train','https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('ilpd.csv','https://archive.ics.uci.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\n       "
+      }
+    ],
+    "last_feedback": [
+      {
+        "claim_id": "*",
+        "direction": "match",
+        "magnitude_bucket": "smoke_failure",
+        "detail": "i.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\"\nr(104, 'Connection reset by peer'))\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import requests, os, sys; d='localdata'; os.makedirs(d, exist_ok=True); urls=[('breast-cancer-wisconsin.data','https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data'), ('monks-2.train','https://archive.ics.uci.edu/ml/machine-learning-databases/monks-problems/monks-2.train'), ('ilpd.csv','https://archive.ics.uci.edu/static/public/225/ilpd.csv')]; [open(f'{d}/{n}','wb').write(requests.get(u, timeout=30).content) for n,u in urls]\n       "
+      }
+    ]
+  },
+  "proposal_claims": [
+    "c1",
+    "c2"
+  ]
+}
