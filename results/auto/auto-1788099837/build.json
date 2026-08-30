@@ -1,0 +1,24 @@
+{
+  "result": {
+    "ok": true,
+    "iterations": 1,
+    "attempts": [
+      {
+        "iteration": 1,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 8,
+        "stage": "smoke_passed"
+      }
+    ],
+    "last_feedback": null
+  },
+  "proposal_claims": [
+    "dt_fashion_1",
+    "svc_fashion_1"
+  ]
+}

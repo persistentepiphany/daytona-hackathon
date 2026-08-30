@@ -1,0 +1,51 @@
+{
+  "run_id": "auto-1788099837",
+  "prereg_hash": "adc904610e833b6c18c5c0bfb4438a33d730695ce4bfacc11efb93a0faf79462",
+  "verdicts": [
+    {
+      "experiment_id": "exp_dt",
+      "claim_id": "dt_fashion_1",
+      "rule_id": "rule_dt",
+      "type": "reproduce",
+      "observed": 0.81102,
+      "delta": -0.06198,
+      "verdict": "REPRODUCED OUTSIDE PREREGISTERED TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-7c97ea7a230f"
+      ]
+    },
+    {
+      "experiment_id": "exp_svc",
+      "claim_id": "svc_fashion_1",
+      "rule_id": "rule_svc",
+      "type": "reproduce",
+      "observed": null,
+      "delta": null,
+      "verdict": "NOT ATTEMPTABLE",
+      "held_out": false,
+      "attempt_ids": []
+    }
+  ],
+  "sham": [],
+  "hermeticity": "NOT RUN - autonomous smoke path",
+  "framing": "failure to reproduce is evidence the paper as written is insufficient to reconstruct the result - not evidence the authors are wrong",
+  "build": {
+    "ok": true,
+    "iterations": 1,
+    "attempts": [
+      {
+        "iteration": 1,
+        "files": [
+          "config.json",
+          "dataio.py",
+          "smoke.sh",
+          "train.py"
+        ],
+        "commands": 8,
+        "stage": "smoke_passed"
+      }
+    ],
+    "last_feedback": null
+  }
+}

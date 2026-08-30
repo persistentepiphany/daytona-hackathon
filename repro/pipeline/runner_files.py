@@ -80,7 +80,10 @@ import hashlib
 import json
 import sys
 
-from fashion import load_split
+try:  # the calibration module ships `fashion`; autonomous builds ship `dataio`
+    from dataio import load_split
+except ImportError:
+    from fashion import load_split
 
 data_dir = sys.argv[1]
 X_train, _ = load_split(data_dir, "train")

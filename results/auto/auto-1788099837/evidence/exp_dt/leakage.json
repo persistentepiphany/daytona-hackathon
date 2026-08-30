@@ -1,0 +1,5 @@
+{
+  "train_test_overlap_rows": 0,
+  "n_train": 60000,
+  "n_test": 10000
+}

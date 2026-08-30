@@ -1,0 +1,48 @@
+{
+  "experiment_id": "exp_dt",
+  "claim_id": "dt_fashion_1",
+  "type": "reproduce",
+  "metric": "accuracy",
+  "rows": [
+    {
+      "claim": "dt_fashion_1",
+      "seed": 17,
+      "metric": "accuracy",
+      "value": 0.8108000000000001,
+      "train_seconds": 64.87703847885132,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    },
+    {
+      "claim": "dt_fashion_1",
+      "seed": 41,
+      "metric": "accuracy",
+      "value": 0.81118,
+      "train_seconds": 64.37320160865784,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    },
+    {
+      "claim": "dt_fashion_1",
+      "seed": 93,
+      "metric": "accuracy",
+      "value": 0.8110799999999999,
+      "train_seconds": 64.88874578475952,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    }
+  ],
+  "mean_value": 0.81102,
+  "min_value": 0.8108000000000001,
+  "max_value": 0.81118,
+  "n_seeds": 3
+}

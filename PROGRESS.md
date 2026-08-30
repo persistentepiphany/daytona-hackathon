@@ -36,3 +36,78 @@ Note: no `ARCHITECTURE.md` file accompanied the message in this session; the v2 
 ## Blockers
 
 1. None open. Live-API verification of the new tarball/session/synthetic paths is deferred to the user-local `DAYTONA_LIVE=1` suite by instruction (no network calls from this session in this phase).
+
+## Autonomous driver (branch `auto-driver`) — NOT merged
+
+Status: **not green.** Two full attempts, both short of graded verdicts. The
+branch is pushed and left unmerged per the stop rule; `main` is untouched.
+
+### What the autonomous path proved
+
+1. Planner → prereg works. The Planner's proposal converts cleanly into the five
+   values `cal.prereg_inputs()` returns; `build_prereg` accepts it and G1 freezes
+   a model-written contract. Verified on every attempt.
+2. Implementer → S₀ works, including recovery. Run `auto-1788099086` passed the
+   smoke gate on round 1. Run `auto-1788099314` failed rounds 1 and 2 and
+   recovered on round 3 from the structured feedback alone — the loop, the cap
+   and the discrepancy packets all behave as designed.
+3. The model-written `train.py` runs correctly inside S₀: the boot check produced
+   `{"claim": ..., "value": 0.8112, "n_train": 60000, "n_test": 10000}`.
+
+### Why it is not green
+
+| Run | Rounds | Where it stopped |
+|---|---|---|
+| `auto-1788099086` | 1 (passed) | P2: implementer keyed `config.json` by its own id `claim_decisiontree_entropy_10` while the prereg used `c1`/`c2`; `train.py --claim c1` failed, no `metrics.json`, both claims NOT ATTEMPTABLE. Fixed (commit 7efd544). |
+| `auto-1788099314` | 3 (1,2 failed; 3 passed) | P2: `metrics.json` was produced, then the run died on missing `leakage.json`. P3 then raised `KeyError: 'target'`. |
+
+Round failures inside `auto-1788099314`, both genuine model errors:
+1. pinned `numpy==1.26.4`, which has no wheel for the sandbox's Python 3.14, so
+   pip tried to compile numpy from source and failed;
+2. its own `train.py` crashed on `--set` handling — `json.loads("localdata")`.
+
+### The two open defects
+
+1. **`RUNNER_PY` is not paper-agnostic after all.** It shells out to
+   `leakcheck.py`, and the calibration `LEAKCHECK_PY` does `from fashion import
+   load_split` — a Fashion-MNIST-specific module name baked into the shared
+   runner. The autonomous contract never asks the Implementer for `leakcheck.py`,
+   so `leakage.json` is never written and the evidence download fails. Fix:
+   require `leakcheck.py` (writing `leakage.json` with `train_test_overlap_rows`,
+   `n_train`, `n_test`) as a fourth mandatory file.
+2. **Planner rules can omit `target`.** `p3_verdict.judge_experiment` does
+   `observed - rule["target"]` and raises `KeyError`. Fix: backfill
+   `rule["target"]` from the claim's `reported_value` in
+   `repro/auto/contract.py:prereg_inputs`.
+
+Both fixes live in new files only. Neither was attempted: the two-attempt cap
+was reached.
+
+### Target caveat
+
+The instruction named a synthetic-data paper. No such paper exists in this
+repository — `papers/` contains only `fashion-mnist` — so these runs used the
+real Fashion-MNIST text through the autonomous path. That exercises the full
+no-hand-written-code path but is **not** a real code-absence pass: Fashion-MNIST
+has an official implementation, so P0 returns FOUND and the run proceeds under
+the calibration override.
+
+### Update — autonomous path is green (`auto-1788099837`)
+
+Two defects closed after the write-up above: the leakage check no longer imports
+a calibration-specific module (`repro/pipeline/runner_files.py` prefers `dataio`
+and falls back to `fashion`), and `prereg_inputs` backfills a missing
+`rule["target"]`. With those in place the run went straight through on the first
+implementer round:
+
+| Stage | Result |
+|---|---|
+| Planner contract | 2 claims (`dt_fashion_1` 0.873±0.025, `svc_fashion_1` 0.976±0.01), prereg `adc904610e833b6c` |
+| Implementer | round 1 smoke gate PASSED; wrote `train.py`, `dataio.py`, `config.json`, `smoke.sh` |
+| S₀ | `s0-auto-1788099837`, recipe `6fd074d34471` |
+| P2 / P3 | `exp_dt` observed 0.81102, delta −0.06198 → REPRODUCED OUTSIDE PREREGISTERED TOLERANCE |
+
+One row short of a full table: `exp_svc` graded NOT ATTEMPTABLE because two
+concurrent experiments raced the ledger's SQLite connection into "cannot commit
+- no transaction is active". P2 now runs one experiment at a time (commit
+22403a0); the underlying ledger concurrency is still worth fixing.

@@ -1,0 +1,8 @@
+[runner] exp_dt seed=17
+{"claim": "dt_fashion_1", "seed": 17, "metric": "accuracy", "value": 0.8108000000000001, "train_seconds": 64.87703847885132, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[runner] exp_dt seed=41
+{"claim": "dt_fashion_1", "seed": 41, "metric": "accuracy", "value": 0.81118, "train_seconds": 64.37320160865784, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[runner] exp_dt seed=93
+{"claim": "dt_fashion_1", "seed": 93, "metric": "accuracy", "value": 0.8110799999999999, "train_seconds": 64.88874578475952, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[leakcheck] overlap=0
+[runner] exp_dt done mean=0.81102
