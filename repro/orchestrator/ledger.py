@@ -6,11 +6,21 @@ never rewritten; the single exception is finalizing an attempt's end state, whic
 guarded to happen at most once.
 """
 
+import functools
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with self.lock:
+            return fn(self, *args, **kwargs)
+    return wrapper
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -87,12 +97,14 @@ class LedgerError(RuntimeError):
 class Ledger:
     def __init__(self, path: str | Path):
         self.path = str(path)
-        self.db = sqlite3.connect(self.path)
+        self.lock = threading.RLock()  # one connection, serialized writes
+        self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self.db.commit()
 
     # runs ----------------------------------------------------------------
+    @_locked
     def create_run(self, run_id: str, paper_hash: str, prereg_hash: str) -> None:
         self.db.execute(
             "INSERT INTO runs (run_id, paper_hash, prereg_hash, created_at) VALUES (?,?,?,?)",
@@ -100,6 +112,7 @@ class Ledger:
         )
         self.db.commit()
 
+    @_locked
     def set_run_freeze(self, run_id: str, s0_snapshot: str, s0_git_sha: str, recipe_sha: str) -> None:
         row = self.run(run_id)
         if row is None:
@@ -112,10 +125,12 @@ class Ledger:
         )
         self.db.commit()
 
+    @_locked
     def run(self, run_id: str) -> sqlite3.Row | None:
         return self.db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
 
     # attempts ------------------------------------------------------------
+    @_locked
     def start_attempt(
         self,
         run_id: str,
@@ -139,6 +154,7 @@ class Ledger:
         self.db.commit()
         return attempt_id
 
+    @_locked
     def bind_sandbox(self, attempt_id: str, sandbox_id: str) -> None:
         cur = self.db.execute(
             "UPDATE attempts SET sandbox_id=? WHERE attempt_id=? AND sandbox_id IS NULL",
@@ -148,6 +164,7 @@ class Ledger:
             raise LedgerError(f"attempt {attempt_id} missing or sandbox already bound")
         self.db.commit()
 
+    @_locked
     def finish_attempt(self, attempt_id: str, exit_code: int, evidence_sha: str | None) -> None:
         cur = self.db.execute(
             "UPDATE attempts SET ended=?, exit=?, evidence_sha=? WHERE attempt_id=? AND ended IS NULL",
@@ -157,9 +174,11 @@ class Ledger:
             raise LedgerError(f"attempt {attempt_id} missing or already finalized")
         self.db.commit()
 
+    @_locked
     def attempt(self, attempt_id: str) -> sqlite3.Row | None:
         return self.db.execute("SELECT * FROM attempts WHERE attempt_id=?", (attempt_id,)).fetchone()
 
+    @_locked
     def attempts_for(self, run_id: str, exp_id: str | None = None) -> list[sqlite3.Row]:
         if exp_id:
             q = "SELECT * FROM attempts WHERE run_id=? AND exp_id=? ORDER BY started"
@@ -169,6 +188,7 @@ class Ledger:
         ).fetchall()
 
     # verdicts ------------------------------------------------------------
+    @_locked
     def record_verdict(
         self, run_id: str, claim_id: str, rule_id: str, observed: str | None,
         delta: str | None, verdict: str, attempt_ids: list[str],
@@ -180,12 +200,14 @@ class Ledger:
         )
         self.db.commit()
 
+    @_locked
     def verdicts_for(self, run_id: str) -> list[sqlite3.Row]:
         return self.db.execute(
             "SELECT * FROM verdicts WHERE run_id=? ORDER BY created_at", (run_id,)
         ).fetchall()
 
     # datasets ------------------------------------------------------------
+    @_locked
     def record_dataset(self, run_id: str, path: str, sha256: str) -> None:
         self.db.execute(
             "INSERT INTO datasets (run_id, path, sha256, created_at) VALUES (?,?,?,?)",
@@ -193,11 +215,13 @@ class Ledger:
         )
         self.db.commit()
 
+    @_locked
     def datasets_for(self, run_id: str) -> dict[str, str]:
         rows = self.db.execute("SELECT path, sha256 FROM datasets WHERE run_id=?", (run_id,)).fetchall()
         return {r["path"]: r["sha256"] for r in rows}
 
     # events --------------------------------------------------------------
+    @_locked
     def log_event(self, run_id: str, kind: str, payload: dict) -> str:
         event_id = f"evt-{uuid.uuid4().hex[:12]}"
         self.db.execute(
@@ -207,6 +231,7 @@ class Ledger:
         self.db.commit()
         return event_id
 
+    @_locked
     def events_for(self, run_id: str, kind: str | None = None) -> list[sqlite3.Row]:
         if kind:
             return self.db.execute(
@@ -217,6 +242,7 @@ class Ledger:
         ).fetchall()
 
     # replay --------------------------------------------------------------
+    @_locked
     def resolve_replay(self, attempt_id: str) -> dict:
         """Everything needed to re-execute an attempt, independent of any agent memory."""
         att = self.attempt(attempt_id)

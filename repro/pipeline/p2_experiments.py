@@ -52,8 +52,10 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         _verify_datasets(adapter, sid, dataset_hashes, data_local_dir)
         adapter.write_file(sid, f"{WORK}/manifest.json", dump_manifest(manifest).encode())
         adapter.write_file(sid, f"{WORK}/runner.py", RUNNER_PY.encode())
+        adapter.write_file(sid, f"{WORK}/runner.sh",
+                           b'#!/bin/bash\nexec venv/bin/python runner.py "$@"\n')
         adapter.write_file(sid, f"{WORK}/leakcheck.py", LEAKCHECK_PY.encode())
-        r = adapter.exec(sid, "venv/bin/python runner.py > stdout.log 2>&1", cwd=WORK,
+        r = adapter.exec(sid, f"{manifest['command']} > stdout.log 2>&1", cwd=WORK,
                          env=env_vars or None, timeout=int(manifest["budget"]["ttl_min"]) * 60)
         exit_code = r.exit_code
 

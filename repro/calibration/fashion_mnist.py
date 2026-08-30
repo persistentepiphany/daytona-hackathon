@@ -7,7 +7,53 @@ string constants so they are versioned with the orchestrator and hashed into the
 recipe.
 """
 
+import json
+from pathlib import Path
+
 DATA_SUBDIR = "fashion-mnist"
+
+PAPER_DIR = Path(__file__).resolve().parents[2] / "papers" / "fashion-mnist"
+
+TOLERANCES = {"C1": 0.01, "C2": 0.01, "C3": 0.02, "C4": 0.01, "C5": 0.04, "C7": 0.01}
+
+CHANCE_ACCURACY = 0.1  # ten balanced classes
+
+
+def prereg_inputs() -> tuple[dict, list[dict], list[dict], dict[str, float], list[int]]:
+    """(paper, claims, experiments, tolerances, seeds) for build_prereg."""
+    paper = json.loads((PAPER_DIR / "paper.json").read_text())
+    claims = json.loads((PAPER_DIR / "claims.json").read_text())["claims"]
+    experiments = []
+    for i, claim in enumerate(claims, start=1):
+        exp_id = f"E{i:03d}"
+        experiments.append({
+            "experiment_id": exp_id,
+            "claim_id": claim["id"],
+            "type": "reproduce",
+            "command": f"bash runner.sh {exp_id}",
+            "rule": {"id": f"R-{exp_id}", "kind": "abs_tolerance",
+                     "target": claim["reported_value"],
+                     "tolerance": TOLERANCES[claim["id"]], "aggregate": "mean"},
+        })
+    experiments.append({
+        "experiment_id": "E101",
+        "claim_id": "C2",
+        "type": "ablation",
+        "command": "bash runner.sh E101",
+        "mutation": {"config_key": "models.C2.params.n_estimators", "value": 10},
+        "rule": {"id": "R-E101", "kind": "direction", "reference_experiment": "E002",
+                 "direction": "decrease", "min_delta": 0.003},
+    })
+    experiments.append({
+        "experiment_id": "E102",
+        "claim_id": "C1",
+        "type": "randomized_control",
+        "command": "bash runner.sh E102",
+        "mutation": {"config_key": "data.shuffle_labels", "value": True},
+        "rule": {"id": "R-E102", "kind": "abs_tolerance", "target": CHANCE_ACCURACY,
+                 "tolerance": 0.02, "aggregate": "mean"},
+    })
+    return paper, claims, experiments, dict(TOLERANCES), list(SEEDS)
 
 DATA_FILES = {
     "train-images-idx3-ubyte.gz": "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion/train-images-idx3-ubyte.gz",
