@@ -114,3 +114,4 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 5. P5 thin build — deployed live to a sandbox with preview + signed URLs.
 6. LLM roles (Planner/Implementer/Verifier/Builder) built behind deterministic validation; they require `ANTHROPIC_API_KEY` at runtime and are optional for the deterministic path.
 7. G2/GPU dormant pending a GPU-credit allocation on the dashboard Wallet page (separate from the general credit balance; probes confirm the refusal is credit-gated, not capability-gated).
+8. Architecture v2 deltas implemented additively and accepted on the fake client (40 tests + 2 live-gated skips); see section 7, `PROGRESS.md`, and `HANDBACK.md`.
