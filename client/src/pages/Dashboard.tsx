@@ -12,15 +12,19 @@ import {
   Plus,
   Radio,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import {
+  approveG3,
   fetchHealth,
   fetchPapers,
   fetchRun,
   fetchRuns,
   isActiveStatus,
+  parseDaytonaEvent,
   parseFeed,
   startRun,
+  uploadPaper,
   type FeedEvent,
   type PaperSummary,
   type RunDetail,
@@ -62,35 +66,60 @@ function Activity({ icon, title, detail, description, children, defaultOpen = fa
 }
 
 const STAGE_META: Record<string, { title: string; description: string; icon: React.ReactNode }> = {
-  intake: {
-    title: "P0 Intake",
-    description: "Classify the paper and identify reproducible claims.",
+  INGEST: {
+    title: "Ingest paper",
+    description: "Fetch the paper and authoritative metadata on the Render control plane.",
     icon: <FolderSearch size={15} />,
   },
-  planner: {
-    title: "Planner → claims",
-    description: "Turn the paper’s claims into a fixed experiment plan.",
+  EXTRACT: {
+    title: "Extract PDF",
+    description: "Validate the PDF, extract text, and record separate provenance hashes.",
+    icon: <FileText size={15} />,
+  },
+  PREFLIGHT: {
+    title: "P0 Preflight",
+    description: "Classify claims, search for existing code, and resolve data requirements.",
     icon: <Sparkles size={15} />,
   },
-  freeze: {
+  G1: {
     title: "G1 Freeze prereg",
-    description: "Approve and lock the plan before experiments can run.",
+    description: "Validate and automatically lock the experiment plan before compute begins.",
     icon: <GitBranch size={15} />,
   },
-  build: {
+  P1: {
     title: "P1 Implementer build",
-    description: "Build and smoke-test the frozen reproducible environment.",
+    description: "Build and smoke-test the frozen environment inside a Daytona sandbox.",
     icon: <FileSearch size={15} />,
   },
-  experiments: {
+  P2: {
     title: "P2 Experiments",
-    description: "Run the locked experiments, controls, and seed checks.",
+    description: "Run locked experiments, controls, and seed checks inside Daytona.",
     icon: <GitBranch size={15} />,
   },
-  verdicts: {
+  P3: {
     title: "P3 Verdicts",
     description: "Grade results against the locked criteria and issue verdicts.",
     icon: <Sparkles size={15} />,
+  },
+  P4: {
+    title: "P4 Adaptive follow-up",
+    description: "Run at most one separately approved follow-up without rewriting the preregistration.",
+    icon: <GitBranch size={15} />,
+  },
+  PACKAGE: {
+    title: "P5 Evidence package",
+    description: "Assemble code, reports, manifests, checksums, and evidence for review.",
+    icon: <FileText size={15} />,
+  },
+  G3: {
+    title: "G3 Publish approval",
+    description: "Require an explicit human approval before creating or updating GitHub.",
+    icon: <GitBranch size={15} />,
+  },
+  GITHUB_PUBLISH: {
+    title: "Private GitHub snapshot",
+    description: "Publish the approved evidence commit to a private repository under persistentepiphany.",
+    icon: <GitBranch size={15} />,
   },
 };
 
@@ -98,6 +127,14 @@ function stageDetail(stage: StageState | undefined): string {
   if (!stage) return "pending";
   if (stage.detail) return `${stage.status} · ${stage.detail}`;
   return stage.status;
+}
+
+function snapshotFromLogs(logs: string[]): string | null {
+  for (const line of logs) {
+    const match = line.match(/\bS0 frozen\s+(s0-[^\s]+)/);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 function VerdictTable({ rows }: { rows: VerdictRow[] }) {
@@ -128,7 +165,7 @@ function VerdictTable({ rows }: { rows: VerdictRow[] }) {
   );
 }
 
-function LiveFeed({ events, running }: { events: FeedEvent[]; running: boolean }) {
+function LiveFeed({ events, running, streaming }: { events: FeedEvent[]; running: boolean; streaming: boolean }) {
   const tailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -142,7 +179,7 @@ function LiveFeed({ events, running }: { events: FeedEvent[]; running: boolean }
     <div className="live-feed">
       <div className="live-feed-head">
         <span className={running ? "pulse-dot" : "status-dot"} />
-        <strong>{running ? "Executing" : "Stream complete"}</strong>
+        <strong>{streaming ? (running ? "Live Render + Daytona feed" : "Persisted execution feed") : "Pipeline log"}</strong>
         <span>{running ? current.text : `${events.length} events`}</span>
       </div>
       <ol className="live-feed-list">
@@ -184,7 +221,9 @@ export default function Dashboard() {
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [daytonaEvents, setDaytonaEvents] = useState<FeedEvent[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +246,14 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!papers.some((paper) => !paper.ready && !["failed", "needs_ocr"].includes(paper.status))) return;
+    const timer = window.setInterval(() => {
+      void fetchPapers().then(setPapers).catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [papers]);
 
   useEffect(() => {
     if (!activeJobId) return;
@@ -235,6 +282,28 @@ export default function Dashboard() {
       if (timer) window.clearTimeout(timer);
     };
   }, [activeJobId]);
+
+  useEffect(() => {
+    setDaytonaEvents([]);
+  }, [activeJobId]);
+
+  useEffect(() => {
+    if (!activeJobId || !activeRun?.run_id || !isActiveStatus(activeRun.status)) return;
+
+    const received = new Set<string>();
+    const stream = new EventSource(`/api/runs/${encodeURIComponent(activeJobId)}/events`);
+    stream.onmessage = (message) => {
+      try {
+        const event = parseDaytonaEvent(JSON.parse(message.data), message.lastEventId);
+        if (!event || (event.id && received.has(event.id))) return;
+        if (event.id) received.add(event.id);
+        setDaytonaEvents((current) => [...current, event].slice(-240));
+      } catch {
+        // A malformed stream frame should not interrupt the running reproduction.
+      }
+    };
+    return () => stream.close();
+  }, [activeJobId, activeRun?.run_id, activeRun?.status]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -286,6 +355,36 @@ export default function Dashboard() {
     setError(null);
   }
 
+  async function handleUpload(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const paper = await uploadPaper(file);
+      setPapers(await fetchPapers());
+      setSelectedPaper(paper.paper_id);
+      await submit(`Reproduce uploaded PDF: ${paper.title}`, paper.paper_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function publishRun(jobId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await approveG3(jobId);
+      setActiveRun(await fetchRun(jobId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function openJob(jobId: string) {
     setError(null);
     setActiveJobId(jobId);
@@ -310,7 +409,7 @@ export default function Dashboard() {
     }
   }
 
-  const title = activeRun?.title || selectedPaper || "New analysis";
+  const title = activeRun?.title || papers.find((paper) => paper.paper_id === selectedPaper)?.title || "New analysis";
   const working = activeRun ? isActiveStatus(activeRun.status) : false;
 
   return (
@@ -332,13 +431,15 @@ export default function Dashboard() {
               <button
                 key={paper.slug}
                 type="button"
-                className={`conversation-link ${selectedPaper === paper.slug ? "active" : ""}`}
+                className={`conversation-link ${selectedPaper === paper.paper_id ? "active" : ""}`}
                 onClick={() => {
-                  setSelectedPaper(paper.slug);
+                  setSelectedPaper(paper.paper_id);
                   setMessage(`Reproduce ${paper.title}`);
                 }}
+                disabled={!paper.ready}
               >
                 {paper.title}
+                {!paper.ready && <small className="run-status-chip">{paper.status}</small>}
               </button>
             ))}
             {!papers.length && <span className="conversation-link">No papers found</span>}
@@ -400,7 +501,7 @@ export default function Dashboard() {
                 <div className="assistant-response">
                   <p>
                     Pick a paper from the sidebar or type <code>reproduce fashion-mnist</code>.
-                    Snapshot queues a real Daytona run on the Render API (~7 min). Runs are
+                    Snapshot uses the Render API to queue a Daytona reproduction (~7 min). Runs are
                     serialized one at a time.
                   </p>
                 </div>
@@ -421,6 +522,7 @@ export default function Dashboard() {
               const stages = detail?.stages || {};
               const rows = detail?.verdicts?.verdicts || [];
               const done = detail ? !isActiveStatus(detail.status) : false;
+              const snapshot = detail ? snapshotFromLogs(detail.logs) : null;
 
               return (
                 <div className="chat-message assistant-message" key={`a-${item.jobId}`}>
@@ -441,8 +543,10 @@ export default function Dashboard() {
                     defaultOpen
                   >
                     <p className="reasoning-copy">
-                      Job <code>{item.jobId}</code> for “{item.prompt}”: intake → planner → freeze →
-                      implementer → experiments → verdicts.
+                      Job <code>{item.jobId}</code> for “{item.prompt}”: ingest → preflight → G1 →
+                      Daytona build → Daytona experiments → verdicts → package → G3.
+                      {" "}Render is the durable control plane. P1 environment work and P2 experiments
+                      execute inside isolated Daytona sandboxes; the feed labels both locations.
                       {detail?.run_id ? (
                         <>
                           {" "}
@@ -472,6 +576,27 @@ export default function Dashboard() {
                     );
                   })}
 
+                  <Activity
+                    icon={<GitBranch size={15} />}
+                    title="Execution & source"
+                    detail={detail?.run_id ? "Daytona-backed" : "Awaiting G1"}
+                  >
+                    <p className="reasoning-copy">
+                      Render coordinates this job. The reproducible environment and experiments run on
+                      Daytona; the frozen S0 snapshot is a private Daytona asset, not a public URL.
+                    </p>
+                    {snapshot && (
+                      <p className="reasoning-copy">
+                        Frozen Daytona snapshot: <code>{snapshot}</code>
+                      </p>
+                    )}
+                    <p className="reasoning-copy provenance-link">
+                      <a href="https://github.com/persistentepiphany/daytona-hackathon" target="_blank" rel="noreferrer">
+                        Open the pipeline source on GitHub <ExternalLink size={11} />
+                      </a>
+                    </p>
+                  </Activity>
+
                   {!!detail?.code?.length && (
                     <Activity
                       icon={<Code size={15} />}
@@ -495,14 +620,18 @@ export default function Dashboard() {
                     </Activity>
                   )}
 
-                  {!!detail?.logs?.length && (
+                  {!!(daytonaEvents.length || detail?.logs?.length) && (
                     <Activity
                       icon={<Radio size={15} />}
-                      title="Live feed"
-                      detail={`${detail.logs.length} events`}
+                      title={daytonaEvents.length ? "Live Daytona feed" : "Pipeline log"}
+                      detail={`${daytonaEvents.length || detail?.logs?.length || 0} events`}
                       defaultOpen
                     >
-                      <LiveFeed events={parseFeed(detail.logs)} running={working} />
+                      <LiveFeed
+                        events={daytonaEvents.length ? daytonaEvents : parseFeed(detail?.logs || [])}
+                        running={working}
+                        streaming={daytonaEvents.length > 0}
+                      />
                     </Activity>
                   )}
 
@@ -516,6 +645,22 @@ export default function Dashboard() {
                     </Activity>
                   )}
 
+                  {!!detail?.artifacts?.length && (
+                    <Activity
+                      icon={<FileText size={15} />}
+                      title="Durable evidence artifacts"
+                      detail={`${detail.artifacts.length} private objects`}
+                    >
+                      <div className="repo-card-files">
+                        {detail.artifacts.map((artifact) => (
+                          <a key={artifact.artifact_id} href={artifact.url} target="_blank" rel="noreferrer">
+                            {artifact.name} · {artifact.sha256.slice(0, 12)} <ExternalLink size={10} />
+                          </a>
+                        ))}
+                      </div>
+                    </Activity>
+                  )}
+
                   {done && (
                     <div className="assistant-response">
                       {detail?.error && <p className="error-copy">{detail.error}</p>}
@@ -524,6 +669,16 @@ export default function Dashboard() {
                           ? "Graded verdicts are ready."
                           : `Job ended with status ${detail?.status} (exit ${detail?.exit_code ?? "—"}).`}
                       </p>
+                      {detail?.status === "awaiting_g3" && (
+                        <button
+                          className="new-chat-button"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void publishRun(detail.job_id)}
+                        >
+                          <GitBranch size={14} /> Approve G3 and publish private repository
+                        </button>
+                      )}
                       <VerdictTable rows={rows} />
                       {detail?.preview_url && (
                         <p className="reasoning-copy">
@@ -594,6 +749,23 @@ export default function Dashboard() {
           <label className="sr-only" htmlFor="chat-input">
             Ask Snapshot
           </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="sr-only"
+            onChange={(event) => void handleUpload(event.target.files?.[0])}
+          />
+          <button
+            className="upload-button"
+            type="button"
+            aria-label="Upload PDF"
+            title="Upload a PDF directly to private object storage"
+            disabled={busy || working}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={17} />
+          </button>
           <textarea
             id="chat-input"
             value={message}
@@ -607,7 +779,7 @@ export default function Dashboard() {
             placeholder={
               selectedPaper
                 ? `Reproduce ${selectedPaper}`
-                : "Type: reproduce fashion-mnist — or pick a paper"
+                : "Enter an arXiv ID/URL, choose a paper, or upload a PDF"
             }
             rows={1}
             disabled={busy || working}
@@ -621,7 +793,7 @@ export default function Dashboard() {
             <ArrowUp size={18} />
           </button>
           <p>
-            Hits the Render API (one run at a time, ~7 min). <kbd>Enter</kbd> to send
+            Render persists the job; P1/P2 execute on Daytona. <kbd>Enter</kbd> to send
           </p>
         </form>
       </section>

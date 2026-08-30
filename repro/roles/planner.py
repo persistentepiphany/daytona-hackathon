@@ -28,6 +28,10 @@ never run anything. Output strictly one JSON object with keys:
   Mutations must be config diffs: {{"config_key", "value"}}.
 - "tolerances": map claim_id -> absolute tolerance, justified by the paper's own
   variance reporting where present.
+- "data_requirements": list of paper-declared datasets as
+  {{"id", "url", "filename", "sha256"?, "license"?, "required": true}}.
+  Include a URL only when it is present in the paper. Never invent a download URL
+  or checksum; an unresolved required dataset is an UNDER-CONSTRAINED finding.
 - "cost_estimate": {{"sandbox_hours", "notes"}}
 Pick claims that are executable on CPU within the stated budget. Be conservative:
 fewer, better-grounded claims beat coverage."""
@@ -69,3 +73,17 @@ def validate_proposal(p: dict) -> None:
     for cid in (p.get("tolerances") or {}):
         if cid not in ids:
             raise RoleError(f"tolerance for unknown claim {cid}")
+    for dataset in p.get("data_requirements") or []:
+        if not isinstance(dataset, dict) or not dataset.get("id"):
+            raise RoleError("each data requirement needs an id")
+        url = dataset.get("url")
+        if url is not None and not isinstance(url, str):
+            raise RoleError(f"dataset {dataset['id']}: url must be a string")
+        if dataset.get("required", True) and not url:
+            dataset["unresolved"] = True
+    estimate = p.get("cost_estimate") or {}
+    hours = estimate.get("sandbox_hours", 0)
+    if not isinstance(hours, (int, float)) or hours < 0:
+        raise RoleError("cost_estimate.sandbox_hours must be a non-negative number")
+    if hours > 25:
+        raise RoleError("proposed cost exceeds the 1,500 sandbox-minute policy ceiling")

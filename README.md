@@ -4,6 +4,13 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 
 ## 1. How the pipeline works
 
+The hosted control plane accepts arXiv IDs/URLs and direct PDF uploads. In
+production it stores state in Postgres, dispatches work through RQ/Render Key
+Value, and stores source PDFs and evidence in private S3-compatible storage.
+Render coordinates work; the P1/P2 compute itself runs in isolated Daytona
+sandboxes. A worker restart recovers the same public job as a new recorded
+attempt instead of changing it to `interrupted`.
+
 1. **P0 Intake** — the Planner reads the paper PDF and emits a claims table, an ambiguity ledger (each entry mapped to a config key), and a proposed experiment set drawn from a fixed menu: `reproduce, ablation, stronger_baseline, randomized_control, seed_sweep`. A code-absence certification via Parallel Search records whether any official implementation exists.
 2. **G1 Approve & Freeze** — one user action. The orchestrator selects held-out claims (stored in an orchestrator-side annex no agent ever sees), fixes tolerances, writes `prereg.json`, and records its sha256. Nothing downstream may alter it.
 3. **P1 Environment archaeology** — the environment is built statefully inside a Daytona sandbox, with every action appended to `RECIPE.sh`, so S₀ ships as both a binary snapshot and a human-readable recipe. A smoke gate (imports, data loader, one fit+predict) must pass; then the sandbox is frozen with `create_snapshot` and a fresh boot from the frozen snapshot must pass the same smoke gate before the archaeology box is deleted.
@@ -11,6 +18,23 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 5. **P3 Verdict** — a deterministic engine compares evidence to the frozen preregistration; the sealed Verifier role re-derives verdicts from prereg + evidence only and any disagreement is itself a finding. Vocabulary: `REPRODUCED WITHIN TOLERANCE / REPRODUCED OUTSIDE PREREGISTERED TOLERANCE / NOT REPRODUCED / UNDER-CONSTRAINED / NOT ATTEMPTABLE / INCONCLUSIVE`, plus `CONTROL PASS / CONTROL FAIL` for ablations and randomized controls. Held-out claims are scored only here.
 6. **P4 Adaptive round (optional)** — at most one, from the same menu, under a prereg-002 document that requires its own approval; rows are labeled ADAPTIVE and cannot alter primary verdicts.
 7. **P5 Thin build + G3** — build what survived, not what was claimed: one API endpoint plus one static page in a container sandbox, exposed via a preview link (with a signed URL for sharing). A deterministic fallback builder renders the verdict table with no LLM involved.
+8. **Private GitHub publication** — after the run has a terminal record, an explicit
+   `POST /runs/{job_id}/gates/G3/approve` creates or updates a private repository
+   under `persistentepiphany` using a GitHub App user token. PDFs, datasets, secrets,
+   and oversized logs are excluded from the atomic evidence commit.
+
+### Hosted API
+
+- `POST /papers/arxiv` with `{ "arxiv_id_or_url": "1708.07747" }`
+- `POST /papers/uploads` → presigned PUT → `POST /papers/uploads/{id}/complete`
+- `GET /papers/{paper_id}` to follow ingestion and extraction
+- `POST /runs` with `{ "paper_id": "...", "seeds": "17,41,93" }`
+- `GET /runs/{job_id}` and `GET /runs/{job_id}/events` for persisted status/SSE
+- `POST /runs/{job_id}/gates/G3/approve` for explicit private GitHub publication
+
+Production deployment is described by `render.yaml` and is deliberately pinned
+to `feat/arxiv-e2e-pipeline` for staging. The web service, worker, Postgres, and
+Key Value instances must share the same provider and object-store secrets.
 
 ## 2. Invariants
 

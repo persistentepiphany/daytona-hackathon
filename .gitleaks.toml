@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credential-shaped strings used to test telemetry redaction"
+paths = ['''tests/test_telemetry\.py''']

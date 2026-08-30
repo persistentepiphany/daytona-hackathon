@@ -36,10 +36,11 @@ MANDATORY OUTPUT CONTRACT - a proposal that omits any of this is rejected unrun:
    minutes) that exercises the real code path and exits non-zero on failure.
 5. Build a virtualenv at ./venv and install dependencies into it, so
    venv/bin/python exists. Pin nothing you do not need.
-6. Any dataset the paper requires must be acquired by your own commands during
-   this build and left on local disk under ./localdata, because experiment
-   sandboxes run with networking disabled. Set config.json's data.dir to
-   "localdata".
+6. NEVER download a paper dataset from inside Daytona. The control plane stages
+   verified files under /data/<run>/ before this build. Copy only those staged
+   files into ./localdata so they become part of S0, and set config.json's
+   data.dir to "localdata". If required files are absent, fail clearly; do not
+   replace them with generated data unless the run is explicitly DEGRADED.
 """
 
 REQUIRED_FILES = ("train.py", "config.json", "dataio.py", "smoke.sh")

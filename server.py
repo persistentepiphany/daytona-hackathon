@@ -1,270 +1,385 @@
-"""HTTP front door for on-demand autonomous runs.
+"""Stateless HTTP control plane for durable paper-reproduction jobs.
 
-A run takes minutes and the ledger's SQLite connection tolerates exactly one
-writer, so requests enqueue work for a single worker thread rather than doing
-it inline. Clients poll GET /runs/{job_id}.
+Production work is dispatched to an RQ background worker. Postgres is the source
+of truth and S3-compatible storage holds papers/evidence; the local fallbacks are
+only for development and tests.
 """
+
+from __future__ import annotations
 
 import json
 import os
-import queue
 import re
-import subprocess
-import sys
-import threading
 import time
-import uuid
-from pathlib import Path
+from collections.abc import Iterator
 
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-REPO = Path(__file__).resolve().parent
-RUN_ROOT = REPO / "runs" / "auto"
-JOBS_FILE = RUN_ROOT / "api_jobs.json"
-PAPERS = REPO / "papers"
+from repro.service.arxiv import ArxivInputError, normalize_arxiv_id
+from repro.service.config import settings
+from repro.service.database import db_session, init_db, session_scope
+from repro.service.events import STAGE_DESCRIPTIONS, emit, event_dict
+from repro.service.models import Artifact, Event, Gate, Job, Paper, Upload, new_id
+from repro.service.object_store import ObjectStoreError, store
+from repro.service.queueing import enqueue
+from repro.service.repository import paper_dict, seed_bundled_papers
+
+
 SEEDS_RE = re.compile(r"^\d+(,\d+)*$")
+SHA256_RE = re.compile(r"^[a-fA-F0-9]{64}$")
 
-app = FastAPI(title="Preregistered reproduction runs")
+app = FastAPI(title="Snapshot durable reproduction API", version="2.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if o],
-    allow_methods=["GET", "POST"],
+    allow_origins=[origin for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if origin],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
-
-_jobs: dict[str, dict] = {}
-_lock = threading.Lock()
-_q: "queue.Queue[str]" = queue.Queue()
 
 
 def require_token(authorization: str | None = Header(default=None)) -> None:
     expected = os.environ.get("API_TOKEN")
-    if not expected:
-        return
-    if authorization != f"Bearer {expected}":
+    if expected and authorization != f"Bearer {expected}":
         raise HTTPException(status_code=401, detail="bad or missing bearer token")
 
 
-def _save() -> None:
-    RUN_ROOT.mkdir(parents=True, exist_ok=True)
-    tmp = JOBS_FILE.with_suffix(".tmp")
-    with _lock:
-        tmp.write_text(json.dumps(_jobs, indent=2))
-    tmp.replace(JOBS_FILE)
+def _bootstrap() -> None:
+    init_db()
+    with session_scope() as session:
+        seed_bundled_papers(session)
 
 
-def _load() -> None:
-    if not JOBS_FILE.is_file():
-        return
-    try:
-        stored = json.loads(JOBS_FILE.read_text())
-    except (OSError, ValueError):
-        return
-    for job in stored.values():
-        # a job still marked running belongs to an instance that is gone
-        if job.get("status") in ("queued", "running"):
-            job["status"] = "interrupted"
-    _jobs.update(stored)
+_bootstrap()
 
 
-def _update(job_id: str, **fields) -> None:
-    with _lock:
-        _jobs[job_id].update(fields)
-    _save()
+class ArxivRequest(BaseModel):
+    arxiv_id_or_url: str = Field(min_length=5, max_length=200)
 
 
-def _resolve_paper(paper_dir: str) -> Path:
-    candidate = (REPO / paper_dir).resolve()
-    if PAPERS.resolve() not in candidate.parents or not candidate.is_dir():
-        raise HTTPException(status_code=400, detail=f"unknown paper_dir: {paper_dir}")
-    return candidate
-
-
-def _worker() -> None:
-    while True:
-        job_id = _q.get()
-        job = _jobs[job_id]
-        started = time.time()
-        _update(job_id, status="running", started_at=started)
-        before = {p.name for p in RUN_ROOT.glob("auto-*")} if RUN_ROOT.is_dir() else set()
-        log_path = RUN_ROOT / f"{job_id}.log"
-        RUN_ROOT.mkdir(parents=True, exist_ok=True)
-        try:
-            with log_path.open("w") as out:
-                proc = subprocess.run(
-                    [sys.executable, "scripts/auto_run.py", job["paper_dir"],
-                     "--seeds", job["seeds"]],
-                    cwd=REPO, stdout=out, stderr=subprocess.STDOUT, timeout=3600,
-                    # the run happens in its own process, so it opts into the feed
-                    # here; GET /runs/{job_id}/feed then tails its ledger
-                    env={**os.environ, "REPRO_TELEMETRY": "1"},
-                )
-            code = proc.returncode
-        except subprocess.TimeoutExpired:
-            _update(job_id, status="failed", error="run exceeded 60m", ended_at=time.time())
-            _q.task_done()
-            continue
-
-        after = {p.name for p in RUN_ROOT.glob("auto-*")} - before
-        run_id = sorted(after)[-1] if after else None
-        fields = {"run_id": run_id, "exit_code": code, "ended_at": time.time(),
-                  "duration_s": round(time.time() - started, 1)}
-        # auto_run exits 2 when the build loop never reached smoke and 3 when
-        # nothing graded; both still write verdicts.json and report.md, so they
-        # are reportable outcomes rather than crashes
-        fields["status"] = ({0: "succeeded", 2: "build_failed", 3: "no_verdicts"}
-                            .get(code, "failed"))
-        if run_id and job.get("publish") and code == 0:
-            fields["preview_url"] = _publish(log_path)
-        _update(job_id, **fields)
-        _q.task_done()
-
-
-def _publish(log_path: Path) -> str | None:
-    try:
-        with log_path.open("a") as out:
-            subprocess.run([sys.executable, "scripts/publish_auto.py"], cwd=REPO,
-                           stdout=out, stderr=subprocess.STDOUT, timeout=1800, check=True)
-    except (subprocess.SubprocessError, OSError):
-        return None
-    tail = log_path.read_text().splitlines()[-40:]
-    urls = [w for line in tail for w in line.split() if w.startswith("http")]
-    return urls[-1] if urls else None
+class UploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=240)
+    size: int = Field(gt=0)
+    sha256: str | None = None
 
 
 class RunRequest(BaseModel):
-    paper_dir: str = "papers/fashion-mnist"
+    paper_id: str | None = None
+    paper_dir: str | None = None
     seeds: str = "17,41,93"
-    publish: bool = False
+
+
+def _job_dict(session: Session, job: Job, detailed: bool = False) -> dict:
+    paper = session.get(Paper, job.paper_id)
+    out = {
+        "job_id": job.id, "paper_id": job.paper_id, "paper_slug": paper.id if paper else None,
+        "title": paper.title if paper else "Reproduction run", "status": job.status,
+        "stage": job.stage, "stage_description": STAGE_DESCRIPTIONS.get(job.stage, ""),
+        "status_detail": job.status_detail, "seeds": job.seeds,
+        "run_id": job.pipeline_run_id, "terminal_classification": job.terminal_classification,
+        "error": job.error, "created_at": job.created_at, "started_at": job.started_at,
+        "updated_at": job.updated_at, "ended_at": job.ended_at,
+        "github_repo_url": job.github_repo_url, "github_commit_sha": job.github_commit_sha,
+    }
+    if not detailed:
+        return out
+    events = session.scalars(select(Event).where(Event.job_id == job.id).order_by(Event.id.desc()).limit(100)).all()
+    events.reverse()
+    out["events"] = [event_dict(event) for event in events]
+    out["logs"] = [json.loads(event.payload_json).get("text", "") for event in events
+                   if event.kind == "pipeline.log"][-50:]
+    stage_order = list(STAGE_DESCRIPTIONS)
+    stage_states: dict[str, dict] = {
+        stage: {"status": "pending", "detail": "", "description": description,
+                "source": "daytona" if stage in {"P1", "P2"} else "render"}
+        for stage, description in STAGE_DESCRIPTIONS.items()
+    }
+    stage_states["INGEST"].update(status="done", detail="Paper source acquired and validated.")
+    stage_states["EXTRACT"].update(status="done", detail="PDF text and provenance hashes are ready.")
+    for event in events:
+        if event.stage in stage_states:
+            stage_states[event.stage].update(
+                status="running", detail=json.loads(event.payload_json).get("text", event.kind),
+                source=event.source,
+            )
+    current_index = stage_order.index(job.stage) if job.stage in stage_order else 0
+    for index, stage in enumerate(stage_order):
+        if index < current_index and stage_states[stage]["status"] == "running":
+            stage_states[stage]["status"] = "done"
+        elif index < current_index and stage_states[stage]["status"] == "pending":
+            stage_states[stage]["status"] = "skipped" if stage == "P4" else "done"
+    if job.stage in stage_states:
+        if job.status == "queued":
+            stage_states[job.stage]["status"] = "queued"
+        elif job.status == "awaiting_g3":
+            stage_states["G3"].update(status="waiting", detail="Explicit publication approval required.")
+        elif job.status == "publish_failed":
+            stage_states[job.stage]["status"] = "failed"
+        elif job.status == "complete":
+            stage_states[job.stage]["status"] = "done"
+    out["stages"] = stage_states
+    artifacts = session.scalars(select(Artifact).where(Artifact.job_id == job.id).order_by(Artifact.filename)).all()
+    out["artifacts"] = [{"artifact_id": item.id, "name": item.filename, "kind": item.kind,
+                         "sha256": item.sha256, "size": item.size,
+                         "url": f"/api/artifacts/{item.id}"} for item in artifacts]
+    verdicts = next((item for item in artifacts if item.filename == "verdicts.json"), None)
+    if verdicts:
+        try:
+            out["verdicts"] = json.loads(store.get_bytes(verdicts.object_key, 2 * 1024 * 1024))
+        except (ValueError, OSError, ObjectStoreError):
+            out["verdicts"] = None
+    report = next((item for item in artifacts if item.filename == "report.md"), None)
+    if report:
+        try:
+            out["report"] = store.get_bytes(report.object_key, 2 * 1024 * 1024).decode(errors="replace")
+        except (OSError, ObjectStoreError):
+            out["report"] = None
+    if job.github_repo_url:
+        out["repo"] = {
+            "name": job.github_repo_url.rstrip("/").rsplit("/", 1)[-1], "url": job.github_repo_url,
+            "branch": "main", "commit_sha": job.github_commit_sha,
+            "files": [{"label": item.filename,
+                       "url": f"{job.github_repo_url}/blob/main/runs/{job.pipeline_run_id}/{item.filename}"}
+                      for item in artifacts[:20]],
+        }
+    return out
 
 
 @app.get("/healthz")
 def healthz() -> dict:
     from repro.env import env_key
+
+    with session_scope() as session:
+        session.execute(select(Paper.id).limit(1)).all()
     return {
         "ok": True,
-        "queue_depth": _q.qsize(),
-        "keys": {
-            "zai": bool(env_key("ZAI_API_KEY", "ZAI_API")),
-            "daytona": bool(env_key("DAYTONA_API_KEY", "DAYTONA_API")),
-            "parallel": bool(env_key("PARALLEL_API_KEY", "PARALLEL_API")),
-        },
+        "authenticated": bool(os.environ.get("API_TOKEN")),
+        "durable": bool(settings.redis_url and not settings.database_url.startswith("sqlite") and store.is_remote),
+        "services": {"database": "postgres" if not settings.database_url.startswith("sqlite") else "sqlite-dev",
+                     "queue": "rq" if settings.redis_url else "thread-dev",
+                     "objects": "s3" if store.is_remote else "filesystem-dev"},
+        "keys": {"zai": bool(env_key("ZAI_API_KEY", "ZAI_API")),
+                 "daytona": bool(env_key("DAYTONA_API_KEY", "DAYTONA_API")),
+                 "parallel": bool(env_key("PARALLEL_API_KEY", "PARALLEL_API")),
+                 "github_app_user": bool(settings.github_token)},
     }
 
 
-@app.get("/papers")
-def papers() -> list[str]:
-    return sorted(f"papers/{p.name}" for p in PAPERS.iterdir()
-                  if p.is_dir() and (p / "paper.json").is_file())
+@app.get("/stages")
+def stages() -> dict[str, str]:
+    return STAGE_DESCRIPTIONS
+
+
+@app.get("/papers", dependencies=[Depends(require_token)])
+def papers(session: Session = Depends(db_session)) -> list[dict]:
+    return [paper_dict(paper) for paper in session.scalars(select(Paper).order_by(Paper.created_at.desc())).all()]
+
+
+@app.get("/papers/{paper_id}", dependencies=[Depends(require_token)])
+def get_paper(paper_id: str, session: Session = Depends(db_session)) -> dict:
+    paper = session.get(Paper, paper_id)
+    if not paper:
+        raise HTTPException(status_code=404, detail="no such paper")
+    return paper_dict(paper)
+
+
+@app.post("/papers/arxiv", status_code=202, dependencies=[Depends(require_token)])
+def create_arxiv(req: ArxivRequest, session: Session = Depends(db_session)) -> dict:
+    try:
+        arxiv_id = normalize_arxiv_id(req.arxiv_id_or_url)
+    except ArxivInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    existing = session.scalar(select(Paper).where(Paper.arxiv_id == arxiv_id))
+    if existing:
+        if existing.status == "failed":
+            existing.status = "ingesting"
+            existing.status_detail = "Retrying server-side arXiv ingestion."
+            emit(session, paper_id=existing.id, kind="paper.requeued", stage="INGEST",
+                 payload={"arxiv_id": arxiv_id})
+            session.commit()
+            enqueue("repro.service.tasks.ingest_arxiv", existing.id,
+                    job_id=f"retry-ingest-{existing.id}-{int(time.time())}")
+        return paper_dict(existing)
+    paper = Paper(id=new_id("paper"), source="arxiv", arxiv_id=arxiv_id,
+                  source_ref=f"https://arxiv.org/abs/{arxiv_id}", title=f"arXiv {arxiv_id}",
+                  status="ingesting", status_detail="Queued for server-side arXiv download.")
+    session.add(paper)
+    session.flush()
+    emit(session, paper_id=paper.id, kind="paper.queued", stage="INGEST", payload={"arxiv_id": arxiv_id})
+    session.commit()
+    enqueue("repro.service.tasks.ingest_arxiv", paper.id, job_id=f"ingest-{paper.id}")
+    return paper_dict(paper)
+
+
+@app.post("/papers/uploads", status_code=202, dependencies=[Depends(require_token)])
+def create_upload(req: UploadRequest, session: Session = Depends(db_session)) -> dict:
+    if req.size > settings.max_pdf_bytes:
+        raise HTTPException(status_code=413, detail=f"PDF exceeds {settings.max_pdf_bytes} bytes")
+    if not req.filename.lower().endswith(".pdf") or "/" in req.filename or "\\" in req.filename:
+        raise HTTPException(status_code=400, detail="filename must be a plain .pdf filename")
+    if req.sha256 and not SHA256_RE.fullmatch(req.sha256):
+        raise HTTPException(status_code=400, detail="sha256 must contain 64 hexadecimal characters")
+    upload_id, paper_id = new_id("upload"), new_id("paper")
+    key = f"papers/{paper_id}/paper.pdf"
+    paper = Paper(id=paper_id, source="upload", source_ref=req.filename,
+                  title=req.filename.removesuffix(".pdf"), status="uploading",
+                  status_detail="Waiting for direct object-storage upload.")
+    upload = Upload(id=upload_id, object_key=key, filename=req.filename,
+                    expected_size=req.size, expected_sha256=req.sha256, paper_id=paper_id)
+    session.add_all([paper, upload])
+    session.flush()
+    upload_url = (store.presign_put(key, "application/pdf") if store.is_remote
+                  else f"/api/papers/uploads/{upload_id}/content")
+    return {"upload_id": upload_id, "paper_id": paper_id, "upload_url": upload_url,
+            "method": "PUT", "headers": {"Content-Type": "application/pdf"}, "expires_in": 900}
+
+
+@app.put("/papers/uploads/{upload_id}/content", dependencies=[Depends(require_token)])
+async def local_upload(upload_id: str, request: Request, session: Session = Depends(db_session)) -> dict:
+    if store.is_remote:
+        raise HTTPException(status_code=404, detail="direct content endpoint is local-development only")
+    upload = session.get(Upload, upload_id)
+    if not upload:
+        raise HTTPException(status_code=404, detail="no such upload")
+    data = await request.body()
+    if len(data) > settings.max_pdf_bytes or len(data) != upload.expected_size:
+        raise HTTPException(status_code=400, detail="uploaded size does not match declaration")
+    store.put_bytes(upload.object_key, data, "application/pdf")
+    return {"ok": True, "size": len(data)}
+
+
+@app.post("/papers/uploads/{upload_id}/complete", status_code=202,
+          dependencies=[Depends(require_token)])
+def finish_upload(upload_id: str, session: Session = Depends(db_session)) -> dict:
+    upload = session.get(Upload, upload_id)
+    if not upload:
+        raise HTTPException(status_code=404, detail="no such upload")
+    if upload.status in {"pending", "failed"}:
+        upload.status = "verifying"
+        session.commit()
+        enqueue("repro.service.tasks.complete_upload", upload.id, job_id=f"extract-{upload.id}")
+    return {"upload_id": upload.id, "paper_id": upload.paper_id, "status": upload.status}
 
 
 @app.post("/runs", status_code=202, dependencies=[Depends(require_token)])
-def create_run(req: RunRequest) -> dict:
-    _resolve_paper(req.paper_dir)
-    if not SEEDS_RE.match(req.seeds):
+def create_run(req: RunRequest, session: Session = Depends(db_session)) -> dict:
+    paper_id = req.paper_id
+    if not paper_id and req.paper_dir:
+        paper_id = f"bundled-{req.paper_dir.rstrip('/').rsplit('/', 1)[-1]}"
+    if not paper_id:
+        raise HTTPException(status_code=400, detail="paper_id is required")
+    paper = session.get(Paper, paper_id)
+    if not paper:
+        raise HTTPException(status_code=404, detail="no such paper")
+    if paper.status != "ready":
+        raise HTTPException(status_code=409, detail=f"paper is {paper.status}: {paper.status_detail or ''}")
+    if not SEEDS_RE.fullmatch(req.seeds):
         raise HTTPException(status_code=400, detail="seeds must be comma-separated integers")
-    job_id = uuid.uuid4().hex[:12]
-    with _lock:
-        _jobs[job_id] = {"job_id": job_id, "status": "queued", "paper_dir": req.paper_dir,
-                         "seeds": req.seeds, "publish": req.publish,
-                         "created_at": time.time(), "run_id": None}
-    _save()
-    _q.put(job_id)
-    return {"job_id": job_id, "status": "queued", "queue_depth": _q.qsize()}
+    job = Job(id=new_id("job"), paper_id=paper.id, seeds=req.seeds, status="queued", stage="PREFLIGHT",
+              status_detail="Queued for the durable background worker.")
+    session.add(job)
+    session.flush()
+    emit(session, job_id=job.id, paper_id=paper.id, kind="run.queued", stage="PREFLIGHT",
+         payload={"paper_id": paper.id, "seeds": req.seeds})
+    session.commit()
+    enqueue("repro.service.tasks.run_pipeline", job.id, job_id=f"pipeline-{job.id}")
+    return _job_dict(session, job)
 
 
-@app.get("/runs")
-def list_runs() -> list[dict]:
-    with _lock:
-        return sorted(_jobs.values(), key=lambda j: j["created_at"], reverse=True)
+@app.get("/runs", dependencies=[Depends(require_token)])
+def list_runs(session: Session = Depends(db_session)) -> list[dict]:
+    return [_job_dict(session, job) for job in
+            session.scalars(select(Job).order_by(Job.created_at.desc()).limit(100)).all()]
 
 
-@app.get("/runs/{job_id}")
-def get_run(job_id: str) -> dict:
-    job = _jobs.get(job_id)
+@app.get("/runs/{job_id}", dependencies=[Depends(require_token)])
+def get_run(job_id: str, session: Session = Depends(db_session)) -> dict:
+    job = session.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="no such job")
-    out = dict(job)
-    log_path = RUN_ROOT / f"{job_id}.log"
-    if log_path.is_file():
-        out["log_tail"] = log_path.read_text().splitlines()[-30:]
-    if job.get("run_id"):
-        verdicts = RUN_ROOT / job["run_id"] / "verdicts.json"
-        if verdicts.is_file():
-            parsed = json.loads(verdicts.read_text())
-            out["verdicts"] = parsed
-            # a degraded run measured generated data, so its verdicts carry
-            # 'NOT COMPARABLE' and the real grade sits in graded_verdict_withheld
-            out["degraded"] = bool(parsed.get("degraded"))
-        out["has_report"] = (RUN_ROOT / job["run_id"] / "report.md").is_file()
-        out["feed_url"] = f"/runs/{job_id}/feed"
-    return out
+    return _job_dict(session, job, detailed=True)
 
 
-LEDGER = RUN_ROOT / "ledger.db"
-
-
-def _run_id_for(job_id: str, wait_s: float = 0.0) -> str | None:
-    """A job is queued before its run exists, so a viewer who opens the feed early has
-    to be waited for rather than refused."""
-    deadline = time.time() + wait_s
-    while True:
-        job = _jobs.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="no such job")
-        if job.get("run_id"):
-            return job["run_id"]
-        if time.time() >= deadline:
-            return None
-        time.sleep(1)
-
-
-@app.get("/runs/{job_id}/feed", response_class=HTMLResponse)
-def run_feed(job_id: str) -> str:
-    """The live feed for one run: activity, attempt grid, gates, verdicts, timings."""
-    from repro import feed
-
-    _run_id_for(job_id)  # 404s on an unknown job
-    return feed.PAGE
-
-
-@app.get("/runs/{job_id}/events")
-def run_events(job_id: str, after: int = 0, replay: str | None = None,
-               speed: float = 1.0):
-    """The run's event stream, as server-sent events.
-
-    The run is a separate process, so this tails its ledger rather than sharing a bus -
-    the same path `repro feed` uses to replay a finished run.
-    """
-    from repro import feed
-
-    run_id = _run_id_for(job_id, wait_s=30)
-    if run_id is None:
-        raise HTTPException(status_code=409, detail="run has not started yet; retry")
-    if not LEDGER.is_file():
-        raise HTTPException(status_code=404, detail="no ledger for this run yet")
-    return StreamingResponse(
-        feed.iter_frames(str(LEDGER), run_id, after=after,
-                         paced=(replay == "paced"), speed=max(1.0, speed),
-                         idle_timeout=900),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-@app.get("/runs/{job_id}/report", response_class=PlainTextResponse)
-def get_report(job_id: str) -> str:
-    job = _jobs.get(job_id)
-    if not job or not job.get("run_id"):
+@app.post("/runs/{job_id}/gates/G3/approve", status_code=202,
+          dependencies=[Depends(require_token)])
+def approve_g3(job_id: str, x_approver: str | None = Header(default=None),
+               session: Session = Depends(db_session)) -> dict:
+    job = session.get(Job, job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="no such job")
-    report = RUN_ROOT / job["run_id"] / "report.md"
-    if not report.is_file():
+    if job.status not in {"awaiting_g3", "publish_failed", "publishing", "complete"}:
+        raise HTTPException(status_code=409, detail="run is not ready for G3 approval")
+    gate = session.scalar(select(Gate).where(Gate.job_id == job_id, Gate.gate == "G3"))
+    if not gate:
+        gate = Gate(job_id=job_id, gate="G3", approver=(x_approver or "api-user")[:100])
+        session.add(gate)
+        session.flush()
+        emit(session, job_id=job_id, paper_id=job.paper_id, kind="gate.changed", stage="G3",
+             payload={"gate": "G3", "state": "approved", "approver": gate.approver})
+    if job.status not in {"publishing", "complete"}:
+        job.status = "publishing"
+        session.commit()
+        enqueue("repro.service.tasks.publish_github", job.id, job_id=f"github-{job.id}")
+    return {"job_id": job.id, "gate": "G3", "approved": True, "status": job.status}
+
+
+def _sse(job_id: str, after: int) -> Iterator[str]:
+    cursor, deadline = after, time.monotonic() + 900
+    while time.monotonic() < deadline:
+        with session_scope() as session:
+            rows = session.scalars(select(Event).where(Event.job_id == job_id, Event.id > cursor)
+                                   .order_by(Event.id).limit(500)).all()
+        if rows:
+            for row in rows:
+                cursor = row.id
+                yield f"id: {row.id}\ndata: {json.dumps(event_dict(row), separators=(',', ':'))}\n\n"
+        else:
+            yield ": keepalive\n\n"
+            time.sleep(2)
+
+
+@app.get("/runs/{job_id}/events", dependencies=[Depends(require_token)])
+def run_events(job_id: str, after: int = 0,
+               last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+               session: Session = Depends(db_session)):
+    if not session.get(Job, job_id):
+        raise HTTPException(status_code=404, detail="no such job")
+    cursor = max(after, int(last_event_id)) if last_event_id and last_event_id.isdigit() else after
+    return StreamingResponse(_sse(job_id, cursor), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/runs/{job_id}/feed", response_class=HTMLResponse,
+         dependencies=[Depends(require_token)])
+def run_feed(job_id: str, session: Session = Depends(db_session)) -> str:
+    if not session.get(Job, job_id):
+        raise HTTPException(status_code=404, detail="no such job")
+    return """<!doctype html><meta charset=utf-8><title>Snapshot feed</title>
+    <pre id=feed>Connecting…</pre><script>
+    const out=document.getElementById('feed'); out.textContent='';
+    new EventSource(location.pathname.replace(/\/feed$/, '/events')).onmessage=e=>{
+      const x=JSON.parse(e.data); out.textContent += `[${x.source}] ${x.stage} ${x.kind} ${JSON.stringify(x.payload)}\\n`;
+    };</script>"""
+
+
+@app.get("/runs/{job_id}/report", dependencies=[Depends(require_token)])
+def report(job_id: str, session: Session = Depends(db_session)) -> Response:
+    item = session.scalar(select(Artifact).where(Artifact.job_id == job_id, Artifact.filename == "report.md"))
+    if not item:
         raise HTTPException(status_code=404, detail="no report for this run")
-    return report.read_text()
+    return Response(store.get_bytes(item.object_key), media_type="text/markdown")
 
 
-_load()
-threading.Thread(target=_worker, daemon=True).start()
+@app.get("/artifacts/{artifact_id}", dependencies=[Depends(require_token)])
+def artifact(artifact_id: str, session: Session = Depends(db_session)):
+    item = session.get(Artifact, artifact_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="no such artifact")
+    if store.is_remote:
+        return RedirectResponse(store.presign_get(item.object_key), status_code=307)
+    return Response(store.get_bytes(item.object_key), media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{item.filename}"'})

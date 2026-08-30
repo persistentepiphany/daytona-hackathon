@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: snapshot-api-staging
+    runtime: python
+    branch: feat/arxiv-e2e-pipeline
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars: &snapshot-env
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DATABASE_URL
+        fromDatabase:
+          name: snapshot-postgres-staging
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: snapshot-queue-staging
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: API_TOKEN
+        generateValue: true
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: ZAI_API_KEY
+        sync: false
+      - key: PARALLEL_API_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: GITHUB_OWNER
+        value: persistentepiphany
+      - key: GITHUB_USER_TOKEN
+        sync: false
+
+  - type: worker
+    name: snapshot-worker-staging
+    runtime: python
+    branch: feat/arxiv-e2e-pipeline
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m repro.service.worker
+    autoDeploy: true
+    envVars: *snapshot-env
+
+  - type: keyvalue
+    name: snapshot-queue-staging
+    plan: starter
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: snapshot-postgres-staging
+    plan: basic-256mb
+    databaseName: snapshot
+    user: snapshot
+    ipAllowList: []

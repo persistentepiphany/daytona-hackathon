@@ -1,5 +1,5 @@
 /**
- * Proxies /api/* → Render repro API, injecting REPRO_API_TOKEN on mutating requests.
+ * Proxies /api/* → Render repro API, injecting REPRO_API_TOKEN server-side.
  * Mirrors server/index.ts for Vercel serverless.
  *
  * Routed via vercel.json rewrite so nested paths (/api/runs/:id) work with Vite.
@@ -36,7 +36,9 @@ export default async function handler(request: Request): Promise<Response> {
   headers.set("host", target.host);
   headers.delete("content-length");
 
-  if (token && (request.method === "POST" || request.method === "PUT" || request.method === "PATCH")) {
+  // All application reads and writes are private. The browser never receives
+  // this token; the Vercel edge proxy injects it for API and SSE requests.
+  if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
 

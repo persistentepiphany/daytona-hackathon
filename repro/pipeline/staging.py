@@ -1,12 +1,12 @@
-"""Data staging: one networked container downloads datasets into the shared volume,
-records a sha256 per file in the ledger, and dies. Experiments later re-verify those
-checksums before compute — the volume has no read-only mount, so integrity is enforced
-by verification, not mount flags.
+"""Data staging: the control plane downloads and validates datasets, then uploads
+them into a Daytona-mounted volume through the SDK. Experiments later re-verify
+those checksums before compute — Daytona never needs arbitrary outbound data access.
 """
 
 from ..orchestrator.adapter import SandboxAdapter
 from ..orchestrator.ledger import Ledger
 from ..orchestrator.lifecycle import Lifecycle
+from ..service.data_staging import fetch_dataset
 
 MOUNT = "/data"
 
@@ -37,13 +37,20 @@ def stage_datasets(lifecycle: Lifecycle, adapter: SandboxAdapter, ledger: Ledger
             raise StagingError(f"mkdir failed: {r.output}")
         for name, url in files.items():
             dest = f"{MOUNT}/{subdir}/{name}"
-            r = adapter.exec(sid, f"curl -sSL --max-time 600 -o '{dest}' '{url}' && sync", timeout=900)
+            try:
+                data, control_sha = fetch_dataset(url)
+            except Exception as exc:
+                raise StagingError(f"control-plane download failed for {url}: {exc}") from exc
+            adapter.write_file(sid, dest, data)
+            r = adapter.exec(sid, "sync", timeout=120)
             if r.exit_code != 0:
-                raise StagingError(f"download failed for {url}: {r.output[-500:]}")
+                raise StagingError(f"volume sync failed for {name}: {r.output[-500:]}")
             r = adapter.exec(sid, f"sha256sum '{dest}'")
             if r.exit_code != 0:
                 raise StagingError(f"checksum failed for {dest}: {r.output[-500:]}")
             sha = r.output.strip().split()[0]
+            if sha != control_sha:
+                raise StagingError(f"checksum changed while uploading {name} to Daytona")
             path = f"{subdir}/{name}"
             hashes[path] = sha
             ledger.record_dataset(run_id, path, sha)

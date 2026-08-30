@@ -15,13 +15,17 @@ import {
 let demoStartedAt: number | null = null;
 
 export type PaperSummary = {
+  paper_id: string;
   slug: string;
   title: string;
-  paper_dir: string;
+  paper_dir?: string;
   arxiv_id?: string;
   authors: string[];
   ready: boolean;
   chars: number;
+  status: string;
+  status_detail?: string | null;
+  source?: string;
 };
 
 export type RunSummary = {
@@ -38,6 +42,8 @@ export type RunSummary = {
 export type StageState = {
   status: "pending" | "running" | "done" | "failed" | string;
   detail: string;
+  description?: string;
+  source?: "render" | "daytona" | string;
 };
 
 export type VerdictRow = {
@@ -70,6 +76,7 @@ export type RunDetail = RunSummary & {
   preview_url?: string | null;
   degraded?: boolean;
   updated_at?: string;
+  artifacts?: Array<{ artifact_id: string; name: string; kind: string; sha256: string; size: number; url: string }>;
 };
 
 const STAGE_ORDER = ["intake", "planner", "freeze", "build", "experiments", "verdicts"] as const;
@@ -92,7 +99,7 @@ const ALIASES: Record<string, string> = {
 };
 
 export function isActiveStatus(status: string): boolean {
-  return status === "queued" || status === "running";
+  return status === "queued" || status === "running" || status === "publishing";
 }
 
 export function isTerminalStatus(status: string): boolean {
@@ -156,11 +163,21 @@ function applyLogLine(stages: Record<string, StageState>, line: string): void {
 }
 
 export type FeedEvent = {
+  id?: string;
   at: string;
   stage: string;
   label: string;
   text: string;
   level: "ok" | "error" | "info";
+};
+
+type DaytonaStreamEvent = {
+  id?: number;
+  kind?: string;
+  payload?: Record<string, unknown>;
+  t?: number;
+  stage?: string;
+  source?: string;
 };
 
 const FEED_LABELS: Record<string, string> = {
@@ -205,6 +222,107 @@ export function parseFeed(logs: string[]): FeedEvent[] {
       level,
     };
   });
+}
+
+function streamText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function streamTime(timestamp: unknown): string {
+  if (typeof timestamp !== "number") return "";
+  return new Date(timestamp * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/** Converts one redacted SSE frame from a Daytona run into a dashboard feed row. */
+export function parseDaytonaEvent(raw: unknown, fallbackId = ""): FeedEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const event = raw as DaytonaStreamEvent;
+  const kind = event.kind || "event";
+  const payload = event.payload || {};
+  const attempt = streamText(payload.attempt_id);
+  const experiment = streamText(payload.exp_id) || streamText(payload.experiment_id);
+  const suffix = experiment || attempt;
+  const state = streamText(payload.state);
+
+  if (kind === "pipeline.log") {
+    const source = event.source === "daytona" ? "Daytona" : "Render";
+    const content = streamText(payload.text);
+    return {
+      id: String(event.id ?? fallbackId),
+      at: streamTime(event.t),
+      stage: event.stage || "PREFLIGHT",
+      label: `${source} · ${event.stage || "pipeline"}`,
+      text: content.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "").slice(0, 1_200),
+      level: /failed|error|NOT ATTEMPTABLE|NOT REPRODUCED/i.test(content) ? "error" : "info",
+    };
+  }
+
+  let label = "Daytona";
+  let text = "Live sandbox event received.";
+  let level: FeedEvent["level"] = "info";
+
+  switch (kind) {
+    case "agent.action":
+      label = "Daytona setup";
+      text = `${streamText(payload.role) || "Implementer"}: ${streamText(payload.summary) || "applied an action"}`;
+      break;
+    case "agent.observation":
+      label = "Daytona setup";
+      text = streamText(payload.tail) || "Sandbox action completed.";
+      level = Number(payload.exit) === 0 ? "ok" : "error";
+      break;
+    case "log.chunk":
+      label = "Daytona output";
+      text = payload.suppressed
+        ? "Output withheld for a held-out claim."
+        : payload.truncated
+          ? "Output limit reached; the run continues."
+          : streamText(payload.text) || "Sandbox output received.";
+      break;
+    case "attempt.state":
+      label = "Daytona sandbox";
+      text = `${suffix ? `${suffix}: ` : ""}${state || "updated"}`;
+      level = state === "failed" ? "error" : state === "done" || state === "running" ? "ok" : "info";
+      break;
+    case "attempt.progress":
+      label = "Daytona progress";
+      text = `${suffix ? `${suffix}: ` : ""}${payload.done ?? 0}/${payload.total ?? "?"} seeds complete`;
+      break;
+    case "gate.changed":
+      label = streamText(payload.gate) || "Gate";
+      text = `${streamText(payload.state) || "updated"} before Daytona execution`;
+      break;
+    case "verdict.emitted":
+      label = "P3 Verdict";
+      text = `${experiment ? `${experiment}: ` : ""}${streamText(payload.verdict) || "verdict emitted"}`;
+      level = "ok";
+      break;
+    case "run.done":
+      label = "Daytona run";
+      text = "Execution stream complete.";
+      level = "ok";
+      break;
+    default:
+      if (kind === "intake" || kind === "planner_proposal" || kind === "gate_approved") {
+        label = kind === "intake" ? "P0 Intake" : kind === "planner_proposal" ? "Planner" : "G1";
+        text = kind === "gate_approved" ? "Plan approved; Daytona work may begin." : "Pipeline event recorded.";
+      } else {
+        text = `${kind.replace(/[_\.]/g, " ")} recorded${suffix ? ` for ${suffix}` : ""}.`;
+      }
+  }
+
+  return {
+    id: String(event.id ?? fallbackId),
+    at: streamTime(event.t),
+    stage: kind,
+    label,
+    text: text.slice(0, 1_200),
+    level,
+  };
 }
 
 function stagesFromLogs(logs: string[], status: string): Record<string, StageState> {
@@ -253,17 +371,28 @@ type RemoteJob = {
   has_report?: boolean;
   degraded?: boolean;
   duration_s?: number;
+  paper_id?: string;
+  title?: string;
+  stage?: string;
+  terminal_classification?: string | null;
+  stages?: Record<string, StageState>;
+  logs?: string[];
+  report?: string | null;
+  repo?: RunDetail["repo"];
+  github_repo_url?: string | null;
+  github_commit_sha?: string | null;
+  artifacts?: RunDetail["artifacts"];
 };
 
 function mapJob(job: RemoteJob): RunDetail {
-  const logs = job.log_tail || [];
+  const logs = job.logs || job.log_tail || [];
   const status = job.status;
   return {
     job_id: job.job_id,
     run_id: job.run_id,
     status,
-    title: titleForDir(job.paper_dir),
-    paper_slug: slugFromDir(job.paper_dir),
+    title: job.title || titleForDir(job.paper_dir),
+    paper_slug: job.paper_id || slugFromDir(job.paper_dir),
     paper_dir: job.paper_dir,
     created_at:
       typeof job.created_at === "number"
@@ -271,13 +400,16 @@ function mapJob(job: RemoteJob): RunDetail {
         : new Date().toISOString(),
     exit_code: job.exit_code ?? null,
     logs,
-    stages: stagesFromLogs(logs, status),
+    stages: job.stages || stagesFromLogs(logs, status),
     verdicts: job.verdicts || null,
-    report: null,
     error: job.error || null,
     preview_url: job.preview_url || null,
     degraded: job.degraded,
     source: "render",
+    report: job.report || null,
+    repo: job.repo || null,
+    message: job.terminal_classification || undefined,
+    artifacts: job.artifacts || [],
   };
 }
 
@@ -296,16 +428,20 @@ export async function fetchHealth(): Promise<boolean> {
 export async function fetchPapers(): Promise<PaperSummary[]> {
   const dirs = isDemoMode()
     ? DEMO_PAPER_DIRS
-    : await parse<string[]>(await fetch("/api/papers"));
-  return dirs.map((paper_dir) => {
+    : await parse<Array<string | PaperSummary>>(await fetch("/api/papers"));
+  return dirs.map((entry) => {
+    if (typeof entry !== "string") return entry;
+    const paper_dir = entry;
     const slug = paper_dir.replace(/^papers\//, "");
     return {
+      paper_id: `bundled-${slug}`,
       slug,
       paper_dir,
       title: PAPER_TITLES[slug] || slug,
       authors: [],
       ready: true,
       chars: 0,
+      status: "ready",
     };
   });
 }
@@ -342,7 +478,7 @@ export async function fetchRun(jobId: string): Promise<RunDetail> {
   }
   const job = await parse<RemoteJob>(await fetch(`/api/runs/${encodeURIComponent(jobId)}`));
   const detail = mapJob(job);
-  if (job.has_report && job.run_id) {
+  if (!detail.report && job.has_report && job.run_id) {
     try {
       const res = await fetch(`/api/runs/${encodeURIComponent(jobId)}/report`);
       if (res.ok) detail.report = await res.text();
@@ -369,6 +505,58 @@ export function resolvePaperDir(input: {
   return m ? m[0] : null;
 }
 
+function arxivInput(message?: string): string | null {
+  const value = message || "";
+  const url = value.match(/https?:\/\/(?:www\.)?(?:arxiv\.org|export\.arxiv\.org)\/(?:abs|pdf)\/[^\s]+/i);
+  if (url) return url[0].replace(/[),.;]+$/, "");
+  const id = value.match(/\b(?:\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?\/\d{7}(?:v\d+)?)\b/i);
+  return id?.[0] || null;
+}
+
+export async function ingestArxiv(value: string): Promise<PaperSummary> {
+  return parse<PaperSummary>(await fetch("/api/papers/arxiv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ arxiv_id_or_url: value }),
+  }));
+}
+
+export async function fetchPaper(paperId: string): Promise<PaperSummary> {
+  return parse<PaperSummary>(await fetch(`/api/papers/${encodeURIComponent(paperId)}`));
+}
+
+export async function waitForPaperReady(paperId: string, timeoutMs = 300_000): Promise<PaperSummary> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const paper = await fetchPaper(paperId);
+    if (paper.ready) return paper;
+    if (paper.status === "failed" || paper.status === "needs_ocr") {
+      throw new Error(paper.status_detail || `Paper ingestion ended with ${paper.status}`);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+  }
+  throw new Error("Paper ingestion is still running; it remains saved and can be opened from the sidebar.");
+}
+
+export async function uploadPaper(file: File): Promise<PaperSummary> {
+  const created = await parse<{ upload_id: string; paper_id: string; upload_url: string; headers?: Record<string, string> }>(
+    await fetch("/api/papers/uploads", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, size: file.size }),
+    }),
+  );
+  const uploaded = await fetch(created.upload_url, { method: "PUT", headers: created.headers, body: file });
+  if (!uploaded.ok) throw new Error(`PDF upload failed (HTTP ${uploaded.status})`);
+  await parse(await fetch(`/api/papers/uploads/${encodeURIComponent(created.upload_id)}/complete`, { method: "POST" }));
+  return waitForPaperReady(created.paper_id);
+}
+
+export async function approveG3(jobId: string): Promise<void> {
+  await parse(await fetch(`/api/runs/${encodeURIComponent(jobId)}/gates/G3/approve`, {
+    method: "POST",
+  }));
+}
+
 export async function startRun(body: {
   message?: string;
   paper_slug?: string;
@@ -386,15 +574,19 @@ export async function startRun(body: {
       paper_slug: "fashion-mnist",
     };
   }
-  if (body.paper_text && body.paper_text.trim().length >= 400) {
-    throw new Error(
-      "Paste-to-run needs the local API. On Render, pick a paper from the sidebar or type its name (e.g. fashion-mnist).",
-    );
+  let paperId = body.paper_slug || null;
+  const arxiv = arxivInput(body.message);
+  if (!paperId && arxiv) {
+    const ingested = await ingestArxiv(arxiv);
+    paperId = (ingested.ready ? ingested : await waitForPaperReady(ingested.paper_id)).paper_id;
   }
-  const paper_dir = resolvePaperDir(body);
-  if (!paper_dir) {
+  if (!paperId) {
+    const paperDir = resolvePaperDir(body);
+    paperId = paperDir ? `bundled-${paperDir.replace(/^papers\//, "")}` : null;
+  }
+  if (!paperId) {
     throw new Error(
-      "Name a known paper (fashion-mnist, best-scored-rf) or pick one from the sidebar.",
+      "Enter an arXiv ID/URL or pick an ingested paper from the sidebar.",
     );
   }
   const started = await parse<{ job_id: string; status: string; queue_depth?: number }>(
@@ -402,7 +594,7 @@ export async function startRun(body: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        paper_dir,
+        paper_id: paperId,
         seeds: body.seeds || "17,41,93",
         publish: Boolean(body.publish),
       }),
@@ -411,7 +603,7 @@ export async function startRun(body: {
   return {
     job_id: started.job_id,
     status: started.status,
-    title: titleForDir(paper_dir),
-    paper_slug: slugFromDir(paper_dir) || undefined,
+    title: body.title || paperId,
+    paper_slug: paperId,
   };
 }
