@@ -275,7 +275,7 @@ a {
 .chat-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .chat-thread { margin: 0 auto; max-width: 820px; padding: 48px clamp(1.25rem, 5vw, 4rem) 100px; }
 .chat-message { animation: rise-in .45s var(--ease-out) both; }
-.user-message { border-left: 2px solid var(--ink); margin: 0 0 46px auto; max-width: 610px; padding: 0 0 0 18px; }
+.user-message { border: 1px solid rgba(21, 23, 24, .48); border-left: 3px solid var(--ink); margin: 0 0 46px auto; max-width: 610px; padding: 14px 18px; }
 .chat-message p { font-size: 15px; line-height: 1.7; margin: 8px 0 0; }
 .assistant-message { max-width: 720px; }
 .assistant-heading { align-items: center; display: flex; font-family: var(--mono); font-size: 10px; gap: 9px; letter-spacing: .08em; margin-bottom: 16px; text-transform: uppercase; }
