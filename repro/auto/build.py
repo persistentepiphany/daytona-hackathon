@@ -12,7 +12,7 @@ from pathlib import Path
 from ..pipeline.p1_archaeology import ArchaeologyError
 from ..roles import implementer
 from ..roles.base import RoleError
-from .contract import implementer_system, validate_proposal
+from .contract import SYNTHETIC_FALLBACK, implementer_system, validate_proposal
 
 MAX_ITERATIONS = 4
 
@@ -40,9 +40,11 @@ def claim_spec(claims: list[dict]) -> str:
 
 
 def propose(provider, method_spec: str, feedback: list[dict],
-            claims: list[dict] | None = None) -> dict:
+            claims: list[dict] | None = None, degraded: bool = False) -> dict:
     """One Implementer call under the augmented system prompt, validated on return."""
     system = implementer_system(implementer.SYSTEM)
+    if degraded:
+        system += SYNTHETIC_FALLBACK
     user = f"Method spec from the paper:\n{method_spec[:120000]}"
     if claims:
         user += ("\n\nconfig.json MUST be keyed by exactly these claim ids "
@@ -57,17 +59,22 @@ def propose(provider, method_spec: str, feedback: list[dict],
 
 def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
                    secrets: list[str], claims: list[dict] | None = None,
-                   candidate_dir=None, log=print) -> dict:
+                   candidate_dir=None, parallel=None, allow_degraded: bool = True,
+                   log=print) -> dict:
     """Drive the archaeology session to a smoke-passing state, or exhaust the cap.
 
     Returns {"ok": bool, "iterations": int, "attempts": [...], "last_feedback": ...}.
     """
     feedback: list[dict] = []
     attempts = []
-    for i in range(1, MAX_ITERATIONS + 1):
+    last = MAX_ITERATIONS + (1 if allow_degraded else 0)
+    for i in range(1, last + 1):
+        if i > MAX_ITERATIONS:
+            log("  rounds exhausted; one degraded round on synthetic data")
         attempt = {"iteration": i}
         try:
-            proposal = propose(provider, method_spec, feedback, claims)
+            proposal = propose(provider, method_spec, feedback, claims,
+                               degraded=(i > MAX_ITERATIONS))
         except RoleError as e:
             attempt.update(stage="propose", error=_redact(str(e), secrets)[:600])
             attempts.append(attempt)
@@ -91,7 +98,7 @@ def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
         log(f"  round {i}: {len(proposal['files'])} files, "
             f"{len(proposal['commands'])} commands -> applying")
         try:
-            implementer.apply_proposal(session, proposal)
+            implementer.apply_proposal(session, proposal, parallel=parallel)
             session.smoke()
         except (ArchaeologyError, Exception) as e:  # noqa: BLE001 - any build failure retries
             detail = _redact(str(e), secrets)[:1200]
@@ -105,11 +112,13 @@ def build_to_smoke(session, provider, method_spec: str, ledger, run_id: str,
             continue
 
         attempt["stage"] = "smoke_passed"
+        attempt["degraded"] = i > MAX_ITERATIONS
         attempts.append(attempt)
         ledger.log_event(run_id, "implementer_round_passed", {"iteration": i,
                                                               "files": attempt["files"]})
         log(f"  round {i}: smoke gate PASSED")
-        return {"ok": True, "iterations": i, "attempts": attempts, "last_feedback": None}
+        return {"ok": True, "iterations": i, "attempts": attempts,
+                "degraded": i > MAX_ITERATIONS, "last_feedback": None}
 
-    return {"ok": False, "iterations": MAX_ITERATIONS, "attempts": attempts,
-            "last_feedback": feedback}
+    return {"ok": False, "iterations": last, "attempts": attempts,
+            "degraded": False, "last_feedback": feedback}
