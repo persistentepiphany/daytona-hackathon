@@ -32,6 +32,10 @@ function proxyApi(req: express.Request, res: express.Response) {
     { method: req.method, headers },
     (up) => {
       res.writeHead(up.statusCode || 502, up.headers);
+      // the run feed is an endless text/event-stream: send the headers now and keep the
+      // socket open, or the browser sees nothing until the run ends
+      res.flushHeaders();
+      res.setTimeout(0);
       up.pipe(res);
     },
   );

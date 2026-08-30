@@ -156,6 +156,25 @@ watched while it happens:
 
 Opening the feed before the run has picked a run id waits rather than failing.
 
+### In the web workspace
+
+The React dashboard consumes the same stream rather than a second one: `/dashboard`
+opens `GET /api/runs/{job_id}/events` for the job it is showing and folds the frames
+into the workspace's own activity panels — the ledger's events as an activity stream,
+one tile per attempt with its measured seed progress and log, and the gates, budget and
+two-bar timing strip in the run's header. Nothing about the run is derived from parsing
+log text.
+
+Two properties the browser side depends on:
+
+1. **Resume, not replay.** The endpoint reads its cursor from `?after=`, not from
+   `Last-Event-ID`, so the client tracks the last event id itself and reconnects with
+   it. A dropped connection — a bounced API, a serverless invocation hitting its time
+   limit — costs a reconnect and repeats nothing.
+2. **Degrade, not fail.** A queued job has no ledger yet, and the feed is opt-in on the
+   run side, so until frames arrive the panel shows the polled log tail from
+   `GET /runs/{job_id}` and swaps to the streamed view on the first event.
+
 ### Replay mode
 
 `--replay paced --speed N` (or `?replay=paced&speed=N` on the URL) replays a finished

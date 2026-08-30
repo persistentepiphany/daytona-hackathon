@@ -1,14 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  ChevronDown,
-  ChevronRight,
-  FileSearch,
-  FolderSearch,
-  GitBranch,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { ArrowUp, FileSearch, FolderSearch, GitBranch, Plus, Sparkles } from "lucide-react";
+import Activity from "@/components/Activity";
+import RunFeed from "@/components/feed/RunFeed";
 import {
   fetchHealth,
   fetchPapers,
@@ -22,34 +15,6 @@ import {
   type StageState,
   type VerdictRow,
 } from "@/lib/api";
-
-type ActivityProps = {
-  icon: React.ReactNode;
-  title: string;
-  detail: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-};
-
-function Activity({ icon, title, detail, children, defaultOpen = false }: ActivityProps) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <section className="chat-activity">
-      <button className="activity-toggle" type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="activity-chevron" aria-hidden="true">
-          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        </span>
-        <span className="activity-icon">{icon}</span>
-        <span className="activity-label">
-          <strong>{title}</strong>
-          <small>{detail}</small>
-        </span>
-      </button>
-      {open && <div className="activity-content">{children}</div>}
-    </section>
-  );
-}
 
 const STAGE_META: Record<string, { title: string; icon: React.ReactNode }> = {
   intake: { title: "P0 Intake", icon: <FolderSearch size={15} /> },
@@ -396,16 +361,11 @@ export default function Dashboard() {
                     );
                   })}
 
-                  {!!detail?.logs?.length && (
-                    <Activity
-                      icon={<FileSearch size={15} />}
-                      title="Live log"
-                      detail={`${detail.logs.length} lines`}
-                      defaultOpen={working}
-                    >
-                      <pre className="run-log">{detail.logs.slice(-40).join("\n")}</pre>
-                    </Activity>
-                  )}
+                  <RunFeed
+                    jobId={item.jobId}
+                    running={activeJobId === item.jobId && working}
+                    fallbackLog={detail?.logs || []}
+                  />
 
                   {done && (
                     <div className="assistant-response">
