@@ -32,6 +32,8 @@ POLICIES: dict[str, Policy] = {
     "data_stager": Policy(auto_stop=15, auto_pause=None, auto_delete=0, default_ttl=120),
     "gpu": Policy(auto_stop=None, auto_pause=None, auto_delete=0, default_ttl=90),
     "build": Policy(auto_stop=30, auto_pause=None, auto_delete=None, default_ttl=720),
+    # demo window: the preview must not idle out mid-demo; TTL 12h is the backstop
+    "build_demo": Policy(auto_stop=0, auto_pause=None, auto_delete=None, default_ttl=720),
 }
 
 

@@ -16,6 +16,18 @@ APP_DIR = "/home/daytona/app"
 PORT = 8000
 
 
+class PushNotApproved(RuntimeError):
+    pass
+
+
+def push_output(gates, run_id: str, push_fn) -> None:
+    """G3: any push of the output requires explicit prior approval. push_fn is the
+    actual push callable; it never runs without the recorded gate."""
+    if not gates.passed(run_id, "G3"):
+        raise PushNotApproved(f"G3 not approved for run {run_id}; refusing to push")
+    push_fn()
+
+
 def fallback_app_files(brief_rows: list[dict], hermeticity: str, paper_title: str,
                        lineage: dict | None = None) -> dict[str, str]:
     """Deterministic thin app: /api/verdicts plus a static page, standard library only."""
@@ -90,8 +102,9 @@ fetch("/api/verdicts").then(r => r.json()).then(d => {
 
 def deploy(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run_id: str,
            files: dict[str, str], start_command: str = "python3 app.py",
-           base_snapshot: str = "daytona-small") -> dict:
-    sid = life.create("build", name=f"build-{run_id}", snapshot=base_snapshot)
+           base_snapshot: str = "daytona-small", demo_window: bool = False) -> dict:
+    kind = "build_demo" if demo_window else "build"
+    sid = life.create(kind, name=f"build-{run_id}", snapshot=base_snapshot)
     r = adapter.exec(sid, f"mkdir -p {APP_DIR}")
     if r.exit_code != 0:
         raise RuntimeError(f"cannot create app dir: {r.output}")
