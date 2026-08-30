@@ -15,6 +15,8 @@ from ..roles.base import RoleError
 CONTRACT = """
 MANDATORY OUTPUT CONTRACT - a proposal that omits any of this is rejected unrun:
 
+0. Every value in "files" MUST be a STRING holding the file's full text. For
+   config.json that means a JSON-encoded string, never a nested JSON object.
 1. "files" MUST include "train.py". It is invoked as
      venv/bin/python train.py --claim <claim_id> --seed <int> [--set key=value ...]
    It MUST accept repeated --set overrides of dotted config keys (at minimum
@@ -51,6 +53,10 @@ def validate_proposal(proposal: dict) -> dict:
     missing = [f for f in REQUIRED_FILES if f not in files]
     if missing:
         raise RoleError(f"implementer proposal missing required file(s): {missing}")
+    nonstring = sorted(k for k, v in files.items() if not isinstance(v, str))
+    if nonstring:
+        raise RoleError(f"file contents must be strings, not objects: {nonstring}; "
+                        f"JSON-encode config.json as a string")
     train = files["train.py"]
     for token in ("--claim", "--seed", "--set"):
         if token not in train:
