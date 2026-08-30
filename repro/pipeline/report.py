@@ -50,12 +50,23 @@ def generate_report(run_id: str, prereg: dict, rows: list[dict], sham_rows: list
                         adaptive_rows, evidence_by_attempt)
     if code_absence:
         lines += ["## Code-absence certification", "",
-                  f"1. Status: {code_absence.get('status')}",
-                  f"2. Queries: {', '.join(code_absence.get('queries', []))}"]
+                  f"1. Status: {code_absence.get('status') or code_absence.get('outcome')}",
+                  f"2. Queries: {_queries(code_absence)}"]
         for i, r in enumerate(code_absence.get("results", []), start=3):
             lines.append(f"{i}. {r.get('title')} - {r.get('url')}")
         lines.append("")
     return "\n".join(lines) + "\n"
+
+
+def _queries(cert: dict) -> str:
+    """Search-query line. The P1 trail carries the query strings under
+    `queries`; the P0 code-existence certificate carries only how many were
+    issued, under `queries_returned`."""
+    queries = cert.get("queries")
+    if queries:
+        return ", ".join(queries)
+    count = cert.get("queries_returned")
+    return f"{count} issued" if count is not None else ""
 
 
 def _table(title: str, rows: list[dict], evidence_by_attempt: dict) -> list[str]:

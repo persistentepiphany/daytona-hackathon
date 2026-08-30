@@ -1,0 +1,1 @@
+{"budget":{"cpu":2,"memory_gib":4,"ttl_min":10},"claim_id":"C4","command":"bash runner.sh HERM","condition":null,"expected_outputs":["metrics.json"],"experiment_id":"HERM","mutation":null,"prereg_hash":"e0c88105263889b3227edc544ffc04230dc62fd2385c6c713b458860f223d1ad","seeds":[17,41,93],"type":"reproduce"}

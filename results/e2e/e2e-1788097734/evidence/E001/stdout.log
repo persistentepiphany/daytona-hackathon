@@ -1,0 +1,8 @@
+[runner] E001 seed=17
+{"claim": "C1", "seed": 17, "metric": "test_accuracy", "value": 0.8114, "train_seconds": 15.6, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[runner] E001 seed=41
+{"claim": "C1", "seed": 41, "metric": "test_accuracy", "value": 0.811, "train_seconds": 15.6, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[runner] E001 seed=93
+{"claim": "C1", "seed": 93, "metric": "test_accuracy", "value": 0.8113, "train_seconds": 15.5, "n_train": 60000, "n_test": 10000, "config_overrides": ["data.dir=/home/daytona/work/localdata"]}
+[leakcheck] overlap=0
+[runner] E001 done mean=0.811233
