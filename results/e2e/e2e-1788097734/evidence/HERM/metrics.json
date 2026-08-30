@@ -1,0 +1,48 @@
+{
+  "experiment_id": "HERM",
+  "claim_id": "C4",
+  "type": "reproduce",
+  "metric": "test_accuracy",
+  "rows": [
+    {
+      "claim": "C4",
+      "seed": 17,
+      "metric": "test_accuracy",
+      "value": 0.5856,
+      "train_seconds": 0.2,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    },
+    {
+      "claim": "C4",
+      "seed": 41,
+      "metric": "test_accuracy",
+      "value": 0.5856,
+      "train_seconds": 0.2,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    },
+    {
+      "claim": "C4",
+      "seed": 93,
+      "metric": "test_accuracy",
+      "value": 0.5856,
+      "train_seconds": 0.2,
+      "n_train": 60000,
+      "n_test": 10000,
+      "config_overrides": [
+        "data.dir=/home/daytona/work/localdata"
+      ]
+    }
+  ],
+  "mean_value": 0.5856,
+  "min_value": 0.5856,
+  "max_value": 0.5856,
+  "n_seeds": 3
+}

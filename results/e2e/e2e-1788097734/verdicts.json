@@ -1,0 +1,82 @@
+{
+  "run_id": "e2e-1788097734",
+  "prereg_hash": "e5251f19be29fe7b67716ea1b82e5cca71c3a14788ad838d40e95bb2bdcb534c",
+  "verdicts": [
+    {
+      "experiment_id": "E001",
+      "claim_id": "C1",
+      "rule_id": "R-E001",
+      "type": "reproduce",
+      "observed": 0.811233,
+      "delta": 0.013233,
+      "verdict": "REPRODUCED WITHIN TOLERANCE",
+      "held_out": false,
+      "attempt_ids": [
+        "att-17cae7e8738e"
+      ]
+    },
+    {
+      "experiment_id": "E004",
+      "claim_id": "C4",
+      "rule_id": "R-E004",
+      "type": "reproduce",
+      "observed": 0.5856,
+      "delta": 0.0746,
+      "verdict": "NOT REPRODUCED",
+      "held_out": false,
+      "attempt_ids": [
+        "att-89b4b3dec5ce"
+      ]
+    }
+  ],
+  "sham": [
+    {
+      "experiment_id": "SH01",
+      "claim_id": "C1",
+      "rule_id": "R-SH01",
+      "type": "reproduce",
+      "observed": 0.811233,
+      "delta": -0.036767,
+      "verdict": "NOT REPRODUCED",
+      "held_out": false,
+      "attempt_ids": [
+        "att-3846997c356f"
+      ]
+    }
+  ],
+  "hermeticity": "VERIFIED - network_block_all active, run completed (mean=0.5856)",
+  "framing": "failure to reproduce is evidence the paper as written is insufficient to reconstruct the result - not evidence the authors are wrong",
+  "verifier_review": {
+    "verdicts": [
+      {
+        "experiment_id": "E001",
+        "claim_id": "C1",
+        "rule_id": "R-E001",
+        "observed": 0.811233,
+        "verdict": "NOT REPRODUCED",
+        "citations": [
+          "evidence: E001.metrics.json"
+        ]
+      },
+      {
+        "experiment_id": "E004",
+        "claim_id": "C4",
+        "rule_id": "R-E004",
+        "observed": 0.5856,
+        "verdict": "NOT REPRODUCED",
+        "citations": [
+          "evidence: E004.metrics.json"
+        ]
+      }
+    ],
+    "concerns": [
+      "E001: Observed mean test_accuracy 0.8112 is outside the absolute tolerance 0.02 of target 0.798.",
+      "E004: Observed mean test_accuracy 0.5856 is outside the absolute tolerance 0.01 of target 0.511.",
+      "HERM: Experiment result present but not found in preregistration experiments list.",
+      "SH01: Experiment result present but not found in preregistration experiments list."
+    ]
+  },
+  "verifier_disagreements": [
+    "E001: verifier says 'NOT REPRODUCED', engine says 'REPRODUCED WITHIN TOLERANCE'"
+  ]
+}

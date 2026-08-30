@@ -1,0 +1,1 @@
+{"budget":{"cpu":2,"memory_gib":4,"ttl_min":25},"claim_id":"C1","command":"bash runner.sh E001","condition":null,"expected_outputs":["metrics.json"],"experiment_id":"E001","mutation":null,"prereg_hash":"e5251f19be29fe7b67716ea1b82e5cca71c3a14788ad838d40e95bb2bdcb534c","seeds":[17,41,93],"type":"reproduce"}

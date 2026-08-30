@@ -1,0 +1,193 @@
+{
+  "claims": [
+    {
+      "id": "dt_1",
+      "metric": "accuracy",
+      "condition": {
+        "dataset": "Fashion-MNIST",
+        "split": "test",
+        "repetitions": 5,
+        "aggregation": "mean"
+      },
+      "reported_value": 0.873,
+      "model": "DecisionTreeClassifier",
+      "params": {
+        "criterion": "entropy",
+        "max_depth": 10,
+        "splitter": "best"
+      },
+      "source_loc": "Table 3, Page 3"
+    },
+    {
+      "id": "dt_2",
+      "metric": "accuracy",
+      "condition": {
+        "dataset": "Fashion-MNIST",
+        "split": "test",
+        "repetitions": 5,
+        "aggregation": "mean"
+      },
+      "reported_value": 0.886,
+      "model": "DecisionTreeClassifier",
+      "params": {
+        "criterion": "entropy",
+        "max_depth": 50,
+        "splitter": "best"
+      },
+      "source_loc": "Table 3, Page 3"
+    },
+    {
+      "id": "rf_1",
+      "metric": "accuracy",
+      "condition": {
+        "dataset": "Fashion-MNIST",
+        "split": "test",
+        "repetitions": 5,
+        "aggregation": "mean"
+      },
+      "reported_value": 0.97,
+      "model": "RandomForestClassifier",
+      "params": {
+        "n_estimators": 50,
+        "criterion": "entropy",
+        "max_depth": 10
+      },
+      "source_loc": "Table 3, Page 5"
+    },
+    {
+      "id": "knn_1",
+      "metric": "accuracy",
+      "condition": {
+        "dataset": "Fashion-MNIST",
+        "split": "test",
+        "repetitions": 5,
+        "aggregation": "mean"
+      },
+      "reported_value": 0.862,
+      "model": "KNeighborsClassifier",
+      "params": {
+        "n_neighbors": 9,
+        "weights": "uniform",
+        "p": 1
+      },
+      "source_loc": "Table 3, Page 4"
+    },
+    {
+      "id": "lr_1",
+      "metric": "accuracy",
+      "condition": {
+        "dataset": "Fashion-MNIST",
+        "split": "test",
+        "repetitions": 5,
+        "aggregation": "mean"
+      },
+      "reported_value": 0.917,
+      "model": "LogisticRegression",
+      "params": {
+        "C": 1,
+        "multi_class": "ovr",
+        "penalty": "l1"
+      },
+      "source_loc": "Table 3, Page 5"
+    }
+  ],
+  "ambiguities": [
+    {
+      "id": "amb_split_shuffle",
+      "question": "Is the data split shuffled before the 5 repetitions, or is the standard split used and only the training order shuffled?",
+      "config_key": "data_split_strategy",
+      "type": "unstated_choice"
+    },
+    {
+      "id": "amb_random_state",
+      "question": "What random seed or range of seeds was used for the 5 repetitions?",
+      "config_key": "random_seed",
+      "type": "unstated_choice"
+    },
+    {
+      "id": "amb_max_iter",
+      "question": "What is the max_iter for iterative solvers (e.g., LogisticRegression, MLPClassifier)?",
+      "config_key": "solver_max_iter",
+      "type": "version_dependent_default"
+    },
+    {
+      "id": "amb_solver_lr",
+      "question": "Which solver is used for LogisticRegression (e.g., liblinear, saga)?",
+      "config_key": "logistic_solver",
+      "type": "unstated_choice"
+    }
+  ],
+  "experiments": [
+    {
+      "experiment_id": "exp_dt_1",
+      "claim_id": "dt_1",
+      "type": "reproduce",
+      "rule": {
+        "id": "rule_dt_1",
+        "kind": "abs_tolerance",
+        "target": 0.873,
+        "tolerance": 0.01,
+        "aggregate": "mean"
+      }
+    },
+    {
+      "experiment_id": "exp_dt_2",
+      "claim_id": "dt_2",
+      "type": "reproduce",
+      "rule": {
+        "id": "rule_dt_2",
+        "kind": "abs_tolerance",
+        "target": 0.886,
+        "tolerance": 0.01,
+        "aggregate": "mean"
+      }
+    },
+    {
+      "experiment_id": "exp_rf_1",
+      "claim_id": "rf_1",
+      "type": "reproduce",
+      "rule": {
+        "id": "rule_rf_1",
+        "kind": "abs_tolerance",
+        "target": 0.97,
+        "tolerance": 0.01,
+        "aggregate": "mean"
+      }
+    },
+    {
+      "experiment_id": "exp_knn_1",
+      "claim_id": "knn_1",
+      "type": "reproduce",
+      "rule": {
+        "id": "rule_knn_1",
+        "kind": "abs_tolerance",
+        "target": 0.862,
+        "tolerance": 0.01,
+        "aggregate": "mean"
+      }
+    },
+    {
+      "experiment_id": "exp_lr_1",
+      "claim_id": "lr_1",
+      "type": "reproduce",
+      "rule": {
+        "id": "rule_lr_1",
+        "kind": "abs_tolerance",
+        "target": 0.917,
+        "tolerance": 0.01,
+        "aggregate": "mean"
+      }
+    }
+  ],
+  "tolerances": {
+    "dt_1": 0.01,
+    "dt_2": 0.01,
+    "rf_1": 0.01,
+    "knn_1": 0.01,
+    "lr_1": 0.01
+  },
+  "cost_estimate": {
+    "sandbox_hours": 2,
+    "notes": "Estimating 5 runs per model. Trees and RF are fastest (<5 mins total). KNN is slow on 60k training samples (~30-60 mins). Logistic Regression is moderate (~30 mins). Small dataset allows quick verification. Tolerance set to 1% (absolute) as no variance/stddev reported."
+  }
+}

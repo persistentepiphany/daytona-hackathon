@@ -1,0 +1,68 @@
+{
+  "classification": {
+    "paper_class": 1,
+    "label": "reported_numbers",
+    "rationale": "The paper presents a novel dataset (Fashion-MNIST) and provides concrete numerical benchmarks for various machine learning classifiers in Table 3. These results, reported as test accuracy scores obtained by running specific algorithms, are checkable by executing the provided code or reproducing the experiments on the released dataset."
+  },
+  "code_gate": {
+    "queries_returned": 8,
+    "results": [
+      {
+        "url": "https://github.com/zalandoresearch/fashion-mnist",
+        "title": "GitHub - zalandoresearch/fashion-mnist: A MNIST-like fashion product database. Benchmark \u00b7 GitHub",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://www.kaggle.com/datasets/zalando-research/fashionmnist",
+        "title": "Fashion MNIST",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://arxiv.org/abs/1708.07747",
+        "title": "[1708.07747] Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "http://ui.adsabs.harvard.edu/abs/2017arXiv170807747X/abstract",
+        "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms - ADS",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://www.tensorflow.org/datasets/catalog/fashion_mnist",
+        "title": "fashion_mnist - Datasets",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://arxiv.org/pdf/1708.07747",
+        "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://archive.org/details/github.com-zalandoresearch-fashion-mnist_-_2017-08-26_10-19-41",
+        "title": "github.com-zalandoresearch-fashion-mnist_-_2017-08-26_10-19-41 : zalandoresearch : Free Download, Borrow, and Streaming : Internet Archive",
+        "seen_at": "2026-08-30T13:48:57Z"
+      },
+      {
+        "url": "https://github.com/zalandoresearch/fashion-mnist/blob/master/README.md",
+        "title": "fashion-mnist/README.md at master \u00b7 zalandoresearch/fashion-mnist \u00b7 GitHub",
+        "seen_at": "2026-08-30T13:48:57Z"
+      }
+    ],
+    "outcome": "FOUND",
+    "found": [
+      "https://github.com/zalandoresearch/fashion-mnist",
+      "https://www.kaggle.com/datasets/zalando-research/fashionmnist",
+      "https://arxiv.org/abs/1708.07747",
+      "http://ui.adsabs.harvard.edu/abs/2017arXiv170807747X/abstract",
+      "https://www.tensorflow.org/datasets/catalog/fashion_mnist",
+      "https://arxiv.org/pdf/1708.07747",
+      "https://archive.org/details/github.com-zalandoresearch-fashion-mnist_-_2017-08-26_10-19-41",
+      "https://github.com/zalandoresearch/fashion-mnist/blob/master/README.md"
+    ]
+  },
+  "decision": {
+    "proceed": false,
+    "reason": "declined: an implementation already exists; the certificate is the output"
+  },
+  "calibration_override": true
+}
