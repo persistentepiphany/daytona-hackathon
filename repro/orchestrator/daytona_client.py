@@ -8,6 +8,8 @@ of all sync client packages to honor HTTPS_PROXY and the CA bundle env vars; it
 is a no-op when those variables are absent.
 """
 
+import time
+
 from ..env import env_key
 
 
@@ -180,6 +182,79 @@ class DaytonaAdapter:
 
     def snapshot_delete(self, name: str) -> None:
         self.d.snapshot.delete(self.d.snapshot.get(name))
+
+    # --- async session commands (live feed log tap) ------------------------
+    # Session commands take no cwd/env arguments, so both are folded into the command
+    # string. These are tap commands only - never an experiment - so nothing hashed
+    # into evidence depends on their shape.
+    def exec_async(self, sandbox_id: str, cmd: str, cwd: str | None = None,
+                   env: dict[str, str] | None = None):
+        import shlex
+        import uuid as _uuid
+
+        from daytona import SessionExecuteRequest
+
+        from .adapter import AsyncCmd
+
+        parts = []
+        for key, value in (env or {}).items():
+            parts.append(f"export {key}={shlex.quote(str(value))};")
+        if cwd:
+            parts.append(f"cd {shlex.quote(cwd)} &&")
+        parts.append(cmd)
+        session_id = f"repro-tap-{_uuid.uuid4().hex[:8]}"
+        proc = self._get(sandbox_id).process
+        proc.create_session(session_id)
+        resp = proc.execute_session_command(
+            session_id, SessionExecuteRequest(command=" ".join(parts), run_async=True))
+        return AsyncCmd(sandbox_id=sandbox_id, session_id=session_id,
+                        cmd_id=resp.cmd_id)
+
+    def follow_logs(self, handle, on_stdout, on_stderr=None) -> None:
+        """Block, feeding output to the callbacks as it arrives.
+
+        The SDK's streaming form is a coroutine over a websocket, so it runs on a
+        private event loop in the caller's thread. Where that websocket cannot be
+        established - an outbound proxy that refuses upgrades, most commonly - this
+        degrades to polling the buffered log and diffing by byte offset. Both paths
+        drive the same callbacks, so nothing above this method knows which ran.
+        """
+        on_stderr = on_stderr or on_stdout
+        proc = self._get(handle.sandbox_id).process
+        try:
+            import asyncio
+
+            box = self.d.get(handle.sandbox_id)
+            asyncio.run(box.process.get_session_command_logs_async(
+                handle.session_id, handle.cmd_id, on_stdout, on_stderr))
+            return
+        except Exception:
+            pass  # fall through to polling; a tap must never fail a run
+        self._poll_logs(proc, handle, on_stdout)
+
+    def _poll_logs(self, proc, handle, on_stdout, interval: float = 0.5) -> None:
+        seen = 0
+        while True:
+            try:
+                logs = proc.get_session_command_logs(handle.session_id, handle.cmd_id)
+                text = (getattr(logs, "output", None) or "")
+                if len(text) > seen:
+                    on_stdout(text[seen:])
+                    seen = len(text)
+                cmd = proc.get_session_command(handle.session_id, handle.cmd_id)
+                if getattr(cmd, "exit_code", None) is not None:
+                    return
+            except Exception:
+                return
+            time.sleep(interval)
+
+    def cancel_async(self, handle) -> None:
+        """Always paired with exec_async: an undeleted session leaves an orphaned
+        follower process burning sandbox CPU for the rest of the run."""
+        try:
+            self._get(handle.sandbox_id).process.delete_session(handle.session_id)
+        except Exception:
+            pass
 
     def preview_url(self, sandbox_id: str, port: int) -> str:
         return self._get(sandbox_id).get_preview_link(port).url

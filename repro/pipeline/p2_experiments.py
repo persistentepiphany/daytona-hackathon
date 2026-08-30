@@ -68,7 +68,7 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
                    volumes: list[tuple[str, str]] | None = None,
                    hermetic: bool = False, data_local_dir: str = "localdata",
                    candidate_files: dict[str, str] | None = None,
-                   data_mode: str = "staged") -> dict:
+                   data_mode: str = "staged", held_out: bool = False) -> dict:
     mh = validate_manifest(manifest, prereg, prereg_hash)
     exp_id = manifest["experiment_id"]
     # persist the full manifest so a rerun reconstructs from the ledger alone
@@ -102,6 +102,7 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
     evidence_dir = Path(evidence_root) / exp_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
     exit_code = 1
+    tap = None
     try:
         if data_mode == "synthetic":
             # no staged data: experiments generate from the manifest's condition
@@ -117,6 +118,12 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         adapter.write_file(sid, f"{WORK}/runner.sh",
                            b'#!/bin/bash\nexec venv/bin/python runner.py "$@"\n')
         adapter.write_file(sid, f"{WORK}/leakcheck.py", LEAKCHECK_PY.encode())
+        if ledger.bus.enabled:
+            # the tap follows stdout.log from the side; the command below, its redirect,
+            # its env and every hashed artifact are exactly what they were without it
+            from ..logtap import start_log_tap
+            tap = start_log_tap(adapter, sid, ledger.bus, run_id, attempt_id,
+                                len(manifest["seeds"]), held_out=held_out)
         r = adapter.exec(sid, f"{manifest['command']} > stdout.log 2>&1", cwd=WORK,
                          env=env_vars or None, timeout=int(manifest["budget"]["ttl_min"]) * 60)
         exit_code = r.exit_code
@@ -145,6 +152,8 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         })
         return metrics
     finally:
+        if tap is not None:
+            tap.close()  # before the stop: auto-delete removes the box under the tap
         try:
             ledger.finish_attempt(attempt_id, exit_code,
                                   evidence_sha if "evidence_sha" in locals() else None)

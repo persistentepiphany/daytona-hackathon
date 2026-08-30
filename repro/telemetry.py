@@ -330,6 +330,10 @@ class LogCoalescer:
     the events table and the browser; with it the feed stays near one frame per stream
     per 300ms while keeping latency a viewer can perceive.
 
+    feed() only appends. Every ledger write happens on the flusher thread, because the
+    SDK's log callbacks run on a websocket pump and blocking inside one drops the
+    socket; the flusher wakes every 100ms, so the 2KB trigger still fires promptly.
+
     Two rules protect the run from its own telemetry. Attempts belonging to the
     held-out annex stream byte counts only, never text: a held-out experiment's stdout
     carries its observed metric, and the feed must not become a side channel around the
@@ -352,6 +356,7 @@ class LogCoalescer:
         self._done: dict[str, int] = {}
         self._sent: dict[str, int] = {}
         self._capped: set[str] = set()
+        self._cap_notice: set[str] = set()
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="log-coalescer",
@@ -381,7 +386,6 @@ class LogCoalescer:
             })
             return
         key = (attempt_id, stream)
-        flush_now = False
         with self._lock:
             if attempt_id in self._capped:
                 return
@@ -392,16 +396,7 @@ class LogCoalescer:
             self._deadline.setdefault(key, time.monotonic() + self.FLUSH_SECONDS)
             if sent >= self.MAX_BYTES_PER_ATTEMPT:
                 self._capped.add(attempt_id)
-            if self._size[key] >= self.FLUSH_BYTES:
-                flush_now = True
-        if flush_now:
-            self.flush(key)
-        if attempt_id in self._capped:
-            self.flush()
-            self.bus.emit(self.run_id, "log.chunk", {
-                "attempt_id": attempt_id, "stream": stream, "text": "",
-                "truncated": True,
-            })
+                self._cap_notice.add(attempt_id)
 
     def flush(self, key: tuple[str, str] | None = None) -> None:
         with self._lock:
@@ -453,13 +448,27 @@ class LogCoalescer:
 
     def _loop(self) -> None:
         while not self._stop.wait(self.FLUSH_SECONDS / 3):
-            now = time.monotonic()
-            with self._lock:
-                due = [k for k, deadline in self._deadline.items() if deadline <= now]
-            for k in due:
-                self.flush(k)
+            self._tick()
+
+    def _tick(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            due = [k for k, deadline in self._deadline.items()
+                   if deadline <= now or self._size.get(k, 0) >= self.FLUSH_BYTES]
+            notices = list(self._cap_notice)
+            self._cap_notice.clear()
+        for k in due:
+            self.flush(k)
+        for attempt_id in notices:
+            self.bus.emit(self.run_id, "log.chunk", {
+                "attempt_id": attempt_id, "stream": "stdout", "text": "",
+                "truncated": True,
+            })
 
     def close(self) -> None:
+        """Flush what is left before the caller marks the attempt finished, so the last
+        lines of a run are never the ones the viewer does not get."""
         self._stop.set()
         self._thread.join(timeout=2)
+        self._tick()
         self.flush()

@@ -16,6 +16,22 @@ from pathlib import Path
 
 WORK = Path(__file__).resolve().parent
 
+# The live feed asks for progress by dropping a marker file naming a side channel.
+# Progress is never printed: stdout.log is an evidence file whose bytes are hashed, and
+# it must be identical whether or not anyone is watching.
+_MARKER = WORK / ".repro_progress"
+PROGRESS = (WORK / _MARKER.read_text().strip()) if _MARKER.exists() else None
+
+
+def _progress(done, total):
+    if PROGRESS is None:
+        return
+    try:
+        with open(PROGRESS, "a") as f:
+            f.write(f"::progress {done}/{total}\n")
+    except OSError:
+        pass  # a watcher's convenience must never interrupt an experiment
+
 
 def main():
     manifest = json.loads((WORK / "manifest.json").read_text())
@@ -34,7 +50,7 @@ def main():
         overrides.append(f"{mutation['config_key']}={json.dumps(mutation['value'])}")
 
     rows = []
-    for seed in manifest["seeds"]:
+    for done, seed in enumerate(manifest["seeds"], start=1):
         cmd = [str(WORK / "venv/bin/python"), str(WORK / "train.py"),
                "--claim", manifest["claim_id"], "--seed", str(seed)]
         for expr in overrides:
@@ -46,6 +62,7 @@ def main():
         if out.returncode != 0:
             raise SystemExit(f"train.py failed for seed {seed}: rc={out.returncode}")
         rows.append(json.loads(out.stdout.strip().splitlines()[-1]))
+        _progress(done, len(manifest["seeds"]))
 
     values = [r["value"] for r in rows]
     metrics = {
