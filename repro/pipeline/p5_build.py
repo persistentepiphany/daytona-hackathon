@@ -16,10 +16,11 @@ APP_DIR = "/home/daytona/app"
 PORT = 8000
 
 
-def fallback_app_files(brief_rows: list[dict], hermeticity: str, paper_title: str) -> dict[str, str]:
+def fallback_app_files(brief_rows: list[dict], hermeticity: str, paper_title: str,
+                       lineage: dict | None = None) -> dict[str, str]:
     """Deterministic thin app: /api/verdicts plus a static page, standard library only."""
     payload = json.dumps({"paper": paper_title, "hermeticity": hermeticity,
-                          "verdicts": brief_rows}, indent=2)
+                          "lineage": lineage or {}, "verdicts": brief_rows}, indent=2)
     app_py = f'''"""One-endpoint API serving the validated-knowledge brief."""
 
 import http.server
@@ -57,6 +58,7 @@ if __name__ == "__main__":
 </style>
 <h1>Build what survived</h1>
 <p id="sub"></p>
+<p id="lineage" style="font-family: monospace; font-size: .8rem; color: #555;"></p>
 <table id="t"><caption>Executed verdicts, from the ledger</caption>
 <tr><th>Experiment</th><th>Claim</th><th>Type</th><th>Observed</th><th>Delta</th><th>Verdict</th></tr>
 </table>
@@ -65,6 +67,9 @@ if __name__ == "__main__":
 fetch("/api/verdicts").then(r => r.json()).then(d => {
   document.getElementById("sub").textContent = d.paper;
   document.getElementById("herm").textContent = "Hermeticity: " + d.hermeticity;
+  const lin = d.lineage || {};
+  document.getElementById("lineage").textContent = Object.entries(lin)
+    .map(([k, v]) => k + "=" + String(v).slice(0, 20)).join("  ");
   const t = document.getElementById("t");
   for (const v of d.verdicts) {
     const tr = document.createElement("tr");

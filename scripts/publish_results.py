@@ -75,8 +75,10 @@ def main() -> int:
     print(f"artifacts copied to {out}", flush=True)
 
     print("deploying what-survived app", flush=True)
-    rows = verdicts["sham"] + verdicts["verdicts"]
-    files = fallback_app_files(rows, verdicts["hermeticity"], PAPER_TITLE)
+    rows = verdicts["sham"] + verdicts["verdicts"] + verdicts.get("adaptive", [])
+    lineage = {"run_id": run_id, "prereg": prereg_hash,
+               "s0": handle["s0_snapshot"], "recipe": handle["recipe_sha"]}
+    files = fallback_app_files(rows, verdicts["hermeticity"], PAPER_TITLE, lineage)
     deployment = deploy(life, adapter, ledger, run_id, files)
     (out / "deployment.json").write_text(json.dumps(deployment, indent=2))
     print(json.dumps(deployment, indent=2))
