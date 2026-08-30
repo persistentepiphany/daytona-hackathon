@@ -29,7 +29,7 @@ RUN_ROOT = Path("runs/calibration")
 TTL_MIN = {"E001": 30, "E002": 60, "E003": 60, "E004": 20, "E005": 30, "E006": 30,
            "E101": 40, "E102": 30, "SH01": 20, "HERM": 20}
 SHAM_DELTA = 0.05  # deterministic corruption applied to the sham twin's targets
-PARALLEL_SANDBOXES = 3
+PARALLEL_SANDBOXES = 2  # org quota: 10GiB total sandbox memory; S0 boxes are 4GiB each
 
 
 def main() -> int:

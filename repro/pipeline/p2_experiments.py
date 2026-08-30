@@ -40,8 +40,10 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         manifest["seeds"], claim_id=manifest["claim_id"], cost_est=ttl,
     )
     env_vars = {"PIP_NO_INDEX": "1", "NO_NETWORK": "1"} if hermetic else {}
+    # the org memory quota caps concurrent sandboxes; when slots are held by long
+    # training runs, a create must wait patiently for one to free up
     sid = None
-    for attempt in range(3):  # concurrent creates can hit transient quota races
+    for attempt in range(20):
         try:
             sid = life.create(
                 "experiment", name=f"{exp_id.lower()}-{run_id}"[:48], snapshot=s0_snapshot,
@@ -52,10 +54,10 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         except Exception as e:
             ledger.log_event(run_id, "sandbox_create_retry",
                              {"exp_id": exp_id, "attempt": attempt + 1, "error": str(e)[:300]})
-            if attempt == 2:
+            if attempt == 19 or "limit" not in str(e).lower():
                 ledger.finish_attempt(attempt_id, 1, None)
                 raise
-            time.sleep(20 * (attempt + 1))
+            time.sleep(60)
     ledger.bind_sandbox(attempt_id, sid)
     evidence_dir = Path(evidence_root) / exp_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
