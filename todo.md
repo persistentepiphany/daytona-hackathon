@@ -1,0 +1,2 @@
+- [x] Replace the masthead context label with a compact Open dashboard arrow button in the left-side header area.
+- [x] Verify the desktop and mobile header after the change.

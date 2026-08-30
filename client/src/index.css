@@ -1,0 +1,213 @@
+/**
+ * Snapshot / Forensic Modernism — full-viewport paper hero.
+ */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --paper: #f1efe8;
+  --paper-deep: #e5e1d6;
+  --ink: #151718;
+  --ink-soft: #444946;
+  --faint: #8b9089;
+  --cyan: #0c8aa5;
+  --line: rgba(21, 23, 24, 0.18);
+  --mono: "IBM Plex Mono", monospace;
+  --display: "Barlow Condensed", sans-serif;
+  --body: "Manrope", sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--paper);
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: #ffffff;
+  font-family: var(--body);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.snapshot-page {
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  background: var(--paper);
+}
+
+.snapshot-page::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.25'/%3E%3C/svg%3E");
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+  opacity: 0.1;
+}
+
+.masthead {
+  align-items: center;
+  display: flex;
+  height: 80px;
+  justify-content: space-between;
+  left: 0;
+  padding: 0 clamp(1.25rem, 4vw, 4.5rem);
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  gap: 10px;
+  letter-spacing: 0.16em;
+}
+
+.brand img {
+  display: block;
+  height: 24px;
+  opacity: 0.88;
+  width: 24px;
+}
+
+.dashboard-link {
+  align-items: center;
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 10px;
+  gap: 8px;
+  letter-spacing: 0.08em;
+  min-height: 44px;
+  padding: 7px 0;
+  text-transform: uppercase;
+  transition: color 0.2s var(--ease-out);
+}
+
+.dashboard-link b {
+  color: #ffffff;
+  display: inline-block;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  position: relative;
+  top: -3px;
+  transition: transform 0.2s var(--ease-out);
+}
+
+.dashboard-link:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.dashboard-link:hover b {
+  transform: translate(2px, -2px);
+}
+
+.hero {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 120px clamp(1.25rem, 6vw, 7rem) 72px;
+  position: relative;
+  width: 100%;
+}
+
+.hero-bg {
+  inset: 0;
+  position: absolute;
+  z-index: 0;
+}
+
+.hero-bg .iridescence-container {
+  z-index: 0;
+}
+
+.hero-copy {
+  animation: rise-in 0.85s var(--ease-out) both;
+  max-width: 36rem;
+  position: relative;
+  text-align: center;
+  z-index: 2;
+}
+
+.eyebrow {
+  color: #ffffff;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  margin: 0 0 22px;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-family: var(--display);
+  font-size: clamp(4.6rem, 9vw, 8.8rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.84;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.hero-dek {
+  animation: rise-in 0.9s var(--ease-out) 0.08s both;
+  color: #ffffff;
+  font-size: clamp(1.05rem, 1.35vw, 1.25rem);
+  line-height: 1.6;
+  margin: 28px auto 0;
+  max-width: 34ch;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 860px) {
+  .masthead {
+    height: 64px;
+  }
+
+  .hero {
+    min-height: 100vh;
+    padding: 112px 1.25rem 56px;
+  }
+
+  .hero h1 {
+    font-size: clamp(3.6rem, 14vw, 5.2rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
