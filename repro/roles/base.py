@@ -2,14 +2,15 @@
 
 Each role gets its own provider instance (separate context by construction). The
 Verifier is constructed with a different model than the Implementer so no shared
-weights bias slips between building and judging. Keys are read at call time from
-the environment; nothing here is required for the deterministic pipeline to run.
+weights bias slips between building and judging. Keys are read at call time from the process environment, then from a `.env`
+file; nothing here is required for the deterministic pipeline to run.
 """
 
 import json
-import os
 import re
 from typing import Protocol
+
+from ..env import env_key
 
 IMPLEMENTER_MODEL = "claude-sonnet-5"
 VERIFIER_MODEL = "claude-opus-5"
@@ -26,7 +27,7 @@ class RoleError(RuntimeError):
 class AnthropicProvider:
     def __init__(self, model: str, api_key: str | None = None):
         self.model = model
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.api_key = api_key or env_key("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise RoleError("ANTHROPIC_API_KEY not set; LLM roles are unavailable")
 

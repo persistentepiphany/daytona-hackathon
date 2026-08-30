@@ -29,12 +29,12 @@ A paper's claims become preregistered executable counterfactuals; each runs from
 4. `repro/calibration/fashion_mnist.py` — the hand-written recipe and candidate code proving the loop before any LLM writes code.
 5. `papers/fashion-mnist/` — calibration paper metadata, transcribed claims, ambiguity ledger.
 6. `scripts/` — `day0_check.py` (live account verification), `run_calibration_p1.py` (prereg → G1 → stage → archaeology → freeze → boot-verify), `run_calibration_p2.py` (experiments + sham + hermeticity → verdicts).
-7. `tests/` — 22 unit tests against an in-memory fake adapter; no network needed.
+7. `tests/` — unit tests against an in-memory fake adapter plus env-key fallback; no network needed.
 
 ## 4. Setup and usage
 
 1. `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'` (Python 3.11+, `daytona==0.207.0` pinned).
-2. Environment variables: `DAYTONA_API_KEY` (or `DAYTONA_API`); `PARALLEL_API_KEY` (or `PARALLEL_API`) for the optional search; `ANTHROPIC_API_KEY` only when running the LLM roles.
+2. Environment variables: `DAYTONA_API_KEY` (or `DAYTONA_API`); `PARALLEL_API_KEY` (or `PARALLEL_API`) for the optional search; `ANTHROPIC_API_KEY` only when running the LLM roles. If a variable is unset, the same names are read from a `.env` file in the current directory or the repository root.
 3. `.venv/bin/pytest` — unit suite.
 4. `.venv/bin/python scripts/day0_check.py` — live Day-0 verification (creates and deletes small labeled sandboxes; minimal spend).
 5. `.venv/bin/python scripts/run_calibration_p1.py` — freeze prereg, stage data, build and freeze S₀.
