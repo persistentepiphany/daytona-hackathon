@@ -29,17 +29,20 @@ MANDATORY OUTPUT CONTRACT - a proposal that omits any of this is rejected unrun:
    plus one entry per claim, keyed by EXACTLY the claim ids given to you in the
    user message. Do not invent your own claim ids: the runner invokes
    train.py --claim <that id> and anything else fails unrun.
-3. "files" MUST include "smoke.sh": a fast end-to-end check (seconds, not
+3. "files" MUST include "dataio.py" exposing load_split(data_dir, split) ->
+   (X, y) as numpy arrays, for both split="train" and split="test". A ride-along
+   integrity check imports it; train.py should use it too.
+4. "files" MUST include "smoke.sh": a fast end-to-end check (seconds, not
    minutes) that exercises the real code path and exits non-zero on failure.
-4. Build a virtualenv at ./venv and install dependencies into it, so
+5. Build a virtualenv at ./venv and install dependencies into it, so
    venv/bin/python exists. Pin nothing you do not need.
-5. Any dataset the paper requires must be acquired by your own commands during
+6. Any dataset the paper requires must be acquired by your own commands during
    this build and left on local disk under ./localdata, because experiment
    sandboxes run with networking disabled. Set config.json's data.dir to
    "localdata".
 """
 
-REQUIRED_FILES = ("train.py", "config.json", "smoke.sh")
+REQUIRED_FILES = ("train.py", "config.json", "dataio.py", "smoke.sh")
 
 
 def implementer_system(base_system: str) -> str:
@@ -94,6 +97,12 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
         entry.setdefault("command", f"bash runner.sh {entry['experiment_id']}")
         claim = next(c for c in claims if c["id"] == entry["claim_id"])
         entry.setdefault("condition", claim.get("condition"))
+        # p3_verdict does observed - rule["target"]; a planner rule that omits it
+        # would crash the grader after the compute has already been paid for
+        rule = dict(entry["rule"])
+        rule.setdefault("target", claim["reported_value"])
+        rule.setdefault("aggregate", "mean")
+        entry["rule"] = rule
         experiments.append(entry)
     if not experiments:
         raise RoleError("planner proposed no reproduce experiment for the kept claims")
