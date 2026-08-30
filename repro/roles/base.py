@@ -50,8 +50,8 @@ class ZaiProvider:
     URL = "https://api.z.ai/api/paas/v4/chat/completions"
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
-        self.model = model or os.environ.get("ZAI_MODEL", "glm-4.6")
-        self.api_key = api_key or os.environ.get("ZAI_API_KEY") or os.environ.get("ZAI_API")
+        self.model = model or env_key("ZAI_MODEL") or "glm-4.6"
+        self.api_key = api_key or env_key("ZAI_API_KEY", "ZAI_API")
         if not self.api_key:
             raise RoleError("ZAI_API_KEY / ZAI_API not set; LLM roles are unavailable")
 
@@ -76,7 +76,7 @@ def make_provider(role: str = "planner"):
     """Provider factory: Z.AI when its key is present, otherwise Anthropic.
     Verifier and implementer keep separate instances (separate context by
     construction) and distinct models where the backend offers them."""
-    if os.environ.get("ZAI_API_KEY") or os.environ.get("ZAI_API"):
+    if env_key("ZAI_API_KEY", "ZAI_API"):
         return ZaiProvider()
     model = VERIFIER_MODEL if role == "verifier" else IMPLEMENTER_MODEL
     return AnthropicProvider(model)
