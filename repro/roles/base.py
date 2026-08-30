@@ -54,6 +54,11 @@ class ZaiProvider:
         self.api_key = api_key or env_key("ZAI_API_KEY", "ZAI_API")
         if not self.api_key:
             raise RoleError("ZAI_API_KEY / ZAI_API not set; LLM roles are unavailable")
+        # GLM-4.6 thinks by default and bills the thinking tokens; with a small
+        # budget the whole completion is reasoning and `content` comes back
+        # empty. The roles want structured JSON, not deliberation, so thinking
+        # is off unless ZAI_THINKING=enabled says otherwise.
+        self.thinking = (env_key("ZAI_THINKING") or "disabled").lower()
 
     def complete(self, system: str, user: str, max_tokens: int = 4096) -> str:
         import httpx
@@ -63,13 +68,14 @@ class ZaiProvider:
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
             json={"model": self.model, "max_tokens": max_tokens,
+                  "thinking": {"type": self.thinking},
                   "messages": [{"role": "system", "content": system},
                                {"role": "user", "content": user}]},
             timeout=240,
         )
         r.raise_for_status()
         msg = r.json()["choices"][0]["message"]
-        return msg.get("content") or ""
+        return msg.get("content") or msg.get("reasoning_content") or ""
 
 
 def make_provider(role: str = "planner"):
