@@ -90,6 +90,7 @@ def test_temporary_database_objects_are_shared_and_expiring(tmp_path):
     EphemeralBlob.__table__.create(create_engine(config.database_url))
     web_store = ObjectStore(config)
     worker_store = ObjectStore(config)
+    assert web_store.is_shared and web_store.is_ephemeral
     digest = web_store.put_bytes("papers/paper-1/paper.pdf", b"%PDF-test", "application/pdf")
 
     assert worker_store.get_bytes("papers/paper-1/paper.pdf") == b"%PDF-test"

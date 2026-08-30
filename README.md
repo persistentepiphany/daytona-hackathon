@@ -40,8 +40,10 @@ Production deployment is described by `render.yaml` and is deliberately pinned
 to `feat/arxiv-e2e-pipeline` for staging. The web service and worker share
 Postgres and Key Value. The staging Blueprint sets
 `OBJECT_STORAGE_BACKEND=database`; expired arXiv objects are refetched when the
-same ID is submitted again. To move to permanent storage, set the backend to
-`s3` and supply the S3-compatible settings shown in `.env.example`.
+same ID is submitted again. Expired rows are purged by worker startup, object
+writes, and the existing five-minute health check. To move to permanent storage,
+set the backend to `s3` and supply the S3-compatible settings shown in
+`.env.example`.
 
 ## 2. Invariants
 

@@ -185,6 +185,7 @@ def _job_dict(session: Session, job: Job, detailed: bool = False) -> dict:
 def healthz() -> dict:
     from repro.env import env_key
 
+    expired_objects_removed = store.cleanup_expired()
     with session_scope() as session:
         session.execute(select(Paper.id).limit(1)).all()
     return {
@@ -195,7 +196,8 @@ def healthz() -> dict:
                      "queue": "rq" if settings.redis_url else "thread-dev",
                      "objects": store.backend},
         "storage": {"backend": store.backend, "shared": store.is_shared,
-                    "ephemeral": store.is_ephemeral, "retention_hours": store.retention_hours},
+                    "ephemeral": store.is_ephemeral, "retention_hours": store.retention_hours,
+                    "expired_objects_removed": expired_objects_removed},
         "keys": {"zai": bool(env_key("ZAI_API_KEY", "ZAI_API")),
                  "daytona": bool(env_key("DAYTONA_API_KEY", "DAYTONA_API")),
                  "parallel": bool(env_key("PARALLEL_API_KEY", "PARALLEL_API")),

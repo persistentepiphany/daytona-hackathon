@@ -65,7 +65,7 @@ class ObjectStore:
 
     @property
     def is_ephemeral(self) -> bool:
-        return self.backend in {"database", "filesystem"}
+        return self.backend == "database"
 
     @property
     def retention_hours(self) -> int | None:
