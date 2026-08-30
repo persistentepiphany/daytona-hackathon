@@ -1,0 +1,5 @@
+{
+  "data": {"dir": "localdata"},
+  "c1": {"dataset": "monks", "n_candidates": 10, "n_trees": 10, "n_splits": 5, "alpha": 0.1},
+  "c2": {"dataset": "bcw", "n_candidates": 10, "n_trees": 10, "n_splits": 5, "alpha": 0.1}
+}

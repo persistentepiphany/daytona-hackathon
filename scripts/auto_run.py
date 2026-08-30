@@ -29,6 +29,7 @@ from repro.orchestrator.gates import Gates  # noqa: E402
 from repro.orchestrator.ledger import Ledger  # noqa: E402
 from repro.orchestrator.lifecycle import Lifecycle  # noqa: E402
 from repro.orchestrator.manifest import build_manifest  # noqa: E402
+from repro.orchestrator.parallel_client import ParallelClient  # noqa: E402
 from repro.orchestrator.prereg import build_prereg, freeze_prereg  # noqa: E402
 from repro.pipeline import p3_verdict as p3  # noqa: E402
 from repro.pipeline.p0_intake import classify_paper, evaluate_code_existence, intake_decision  # noqa: E402
@@ -105,9 +106,13 @@ def main() -> int:
     build_result, s0, frozen = None, None, None
     try:
         log(f"P1 implementer build loop (cap {MAX_ITERATIONS} rounds)")
+        # the role can now search for a working mirror instead of re-trying a
+        # host that is unreachable from this sandbox
+        parallel = ParallelClient(ledger, run_id, budget)
         build_result = build_to_smoke(arch, provider, paper_text, ledger, run_id,
                                       secrets, claims=doc["claims"],
-                                      candidate_dir=run_dir / "candidate", log=log)
+                                      candidate_dir=run_dir / "candidate",
+                                      parallel=parallel, log=log)
         if build_result["ok"]:
             s0 = f"s0-{run_id}"
             frozen = arch.freeze(s0)
@@ -120,9 +125,20 @@ def main() -> int:
         {"result": build_result, "proposal_claims": [c["id"] for c in claims]}, indent=2))
     if not build_result or not build_result["ok"]:
         log(f"P1 FAILED after {MAX_ITERATIONS} rounds; no S0. Run recorded, no experiments run.")
+        rows = [{"experiment_id": e["experiment_id"], "claim_id": e["claim_id"],
+                 "rule_id": e["rule"].get("id"), "type": e["type"], "observed": None,
+                 "delta": None, "verdict": "NOT ATTEMPTABLE", "held_out": False,
+                 "attempt_ids": []} for e in doc["experiments"]]
         (run_dir / "verdicts.json").write_text(json.dumps(
-            {"run_id": run_id, "prereg_hash": prereg_hash, "verdicts": [], "sham": [],
-             "build": build_result}, indent=2))
+            {"run_id": run_id, "prereg_hash": prereg_hash, "verdicts": rows, "sham": [],
+             "hermeticity": "NOT RUN - build never passed the smoke gate",
+             "framing": doc["framing"], "build": build_result}, indent=2))
+        report = generate_report(run_id, doc, rows, [],
+                                 "NOT RUN - build never passed the smoke gate", ledger,
+                                 paper.get("title", args.paper_dir), code_absence=certificate)
+        (run_dir / "report.md").write_text(report)
+        log(f"deliverable written despite failure: {run_dir} "
+            f"(candidate source under candidate/)")
         return 2
 
     # ---- P2 experiments (existing executor, synthetic mode = no staging) ----
@@ -149,8 +165,18 @@ def main() -> int:
 
     # ---- P3 verdicts -------------------------------------------------------
     rows = p3.judge_run(doc, annex, evidence_root, ledger, run_id)
+    degraded = bool(build_result.get("degraded"))
+    if degraded:
+        # the run executed against generated data, not the paper's; the observed
+        # values are real measurements of the candidate code and nothing more
+        for r in rows:
+            r["graded_verdict_withheld"] = r["verdict"]
+            r["verdict"] = "NOT COMPARABLE - synthetic data substitute"
+        log("DEGRADED: synthetic data was substituted; verdicts are not comparable "
+            "to the paper")
     verdicts = {"run_id": run_id, "prereg_hash": prereg_hash, "verdicts": rows,
                 "sham": [], "hermeticity": "NOT RUN - autonomous smoke path",
+                "degraded": degraded,
                 "framing": doc["framing"], "build": build_result}
     (run_dir / "verdicts.json").write_text(json.dumps(verdicts, indent=2))
     for r in rows:

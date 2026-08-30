@@ -1,0 +1,157 @@
+Best-scored Random Forest Classification (arXiv:1905.11028)
+
+Abstract
+We propose an algorithm named best-scored random forest for binary classiﬁcation
+problems. The terminology best-scored means to select the one with the best empirical
+performance out of a certain number of purely random tree candidates as each single tree in
+the forest. In this way, the resulting forest can be more accurate than the original purely random
+forest. From the theoretical perspective, within the framework of regularized empirical risk
+minimization penalized on the number of splits, we establish almost optimal convergence rates
+for the proposed best-scored random trees under certain conditions which can be extended
+to the best-scored random forest. In addition, we present a counterexample to illustrate that
+in order to ensure the consistency of the forest, every dimension must have the chance to be
+split. In the numerical experiments, for the sake of efﬁciency, we employ an adaptive random
+splitting criterion. Comparative experiments with other state-of-art classiﬁcation methods
+demonstrate the accuracy of our best-scored random forest.
+Keywords: purely random decision tree, random forest, ensemble learning, regularized empirical
+risk minimization, classiﬁcation, statistical learning theory
+1
+arXiv:1905.11028v1  [stat.ML]  27 May 2019
+1 Introduction
+Ensemble methods are machine learning methods where each learner provides an estimate of
+the target variables and all estimates are then combined in some fashion hopefully to reduce
+the generalization error compared to a single learner. Random forest, devised by Breiman in
+the early 2000s (Breiman, 2001), is 
+
+=== EXPERIMENTS ===
+
+nt for 70% and 30% of
+the overall data volume, respectively.
+There is one vital thing to emphasize here. Concerning that purely random tree may face
+the dilemma where the effective number of splits is relatively small, we propose a new effective
+partition method called the adaptive random partition which improves the original purely random
+partition procedures. For the original partition, Li in the random vector Qi := (Li,Ri,Si) (please
+refer to Section 2.2) denotes the randomly chosen leaf to be split at thei-th step of tree construction.
+However, since this choice of Li does not make any use of the sample information, it may suffer
+from over-splitting on sample-sparse nodes and under-splitting on sample-dense nodes. A wise
+improvement need to use sample information to some extent without losing the randomness of the
+choice of nodes. Therefore, we propose that when choosing a to be split node, we ﬁrst randomly
+select one sample point from the training data set, and then choose the node which that sample
+point belongs to as Li. According to the fact that when randomly picking sample point from the
+whole training data set, nodes with more samples will be more likely to be selected, we obtain a
+partition where there are more splits applied to sample-dense area, while fewer splits applied to
+sample-sparse area. In this way, we develop an adaptive random partition.
+Now we present the details of the construction of one random tree. To begin with, we generate
+k p-splitting adaptive random partitions. The main objective of the following work is to choose the
+partition with the best classiﬁcation performance from k candidates via a 10-fold cross-validation.
+Now we discuss the ﬁrst round of the 10-fold cross-validation. Based on the training set of
+cross-validation, for each of the k partitions, the corresponding classiﬁer is derived by labeling
+each cells of that partition with 1 or−1 according to the majority votes of the samples which fall
+29
+Adaptive Method
+ Purely Random Method
+into that cell. Subsequently, we derive the validation errors which are the empirical risks based
+on the validation set of cross-validation for all k base classiﬁers. Once traversing all ten rounds,
+for each classiﬁer, we are then able to calculate its average validation error for ten rounds. As a
+result, we can choose the partition from all k candidates with the smallest average validation error
+to be the exact partition for one tree. Furthermore, by giving labels to all the cells of the chosen
+partition in accordance with the majority votes basing on the training data, which accounts for the
+70% of the overall data volume as mentioned before, we ﬁnally manage to construct one tree in
+the forest. That is what we call the best-scored tree. According to this construction approach, we
+obtain all m trees which consequently form the best-scored random forest for a ﬁxed (k,m) pair.
+In summary, we successfully establish an appropriate best-scored random forest for data at
+hand.
+6.2 Experimental Setup
+Having developed the best-scored random forest, it is high time for us to conduct comparisons
+between our algorithm and different mainstream classiﬁcation algorithms. Test errors of a forest
+or classiﬁers from other approaches are evaluated by the empirical risk based on the testing data.
+30
+In our experiments, we conduct comparisons among baseline algorithms which are Breiman’s
+random forest (RF), Extremely Randomized Trees (ExtRa), k-Nearest Neighbors (k-NN), and
+Support vector machines (SVMs), for those algorithms are well established.
+• RF: The idea can be traced back to Breiman (2001). The leading parameters are mainly the
+number of trees in the forest, the number of samples for the construction of one tree, the
+number of possible features for splitting at each node of each tree and number of splits.
+• ExtRa: This algorithm proposed by Geurts et al. (2006), is also a tree-based ensemble
+method for supervised learning while it selects splits, both attribute and cut-point, totally or
+partially at random. There are two parameters in the algorithm: the number of attributes
+randomly selected at each node and the minimum sample size for splitting a node nmin.
+• k-NN: Here we use Aha et al. (1991)’s version of k-nearest neighbor and the leading
+parameter in the algorithm is the number of nearby points k. The idea of k-NN is inspired
+by Cover and Hart (1967);
+• SVMs: The leading parameters in support vector machines are the regularization parameter
+and bandwidth. The idea originates from Cortes and Vapnik (1995);
+For these algorithms, we simply used the Python-package scikit-learn with default settings.
+It is worth pointing out that our best-scored random forest have much more free parameters
+tunable compared to other methods. To be speciﬁc, these free parameters include the number
+of candidates for choosing each decision tree k, the total number of trees in the forest m, the
+number of splits for trees in the forest p, the parameter a∈ [0,0.5] in the uniform distribution
+Unif[0.5− a,0.5 + a] for selecting the cut point.
+31
+6.3 Practical Performance Analysis
+In our experiments, we conduct empirical comparisons on the classiﬁcation accuracy among
+Breiman’s random forest (RF), Extremely Randomized Trees (ExtRa),k-Nearest Neighbors (k-
+NN), and Support vector machines (SVMs), and our best-scored random forest (BRF) on the
+following UCI data sets:
+• monks: The MONK’s Problems is a data set which consists of three subsets. It is derived
+from a domain in which each training example is represented by six discrete-valued attributes.
+The second subset is used here to learn a binary function deﬁned over this domain, from a
+sample of training examples of this function. We randomly split each data set into a training
+set containing 70% of the total observations and a test set containing the remaining 30% of
+the observations.
+• bcw: Breast Cancer Wisconsin contains data collected by Dr. Wolberg in his clinical cases
+throughout 1989 and 1991. Since samples arrive periodically, the database reﬂects this
+chronological grouping of the data. The whole data set consists of 699 samples of dimension
+11 where the ratio of number of samples in the training set and the testing set is 7 : 3.
+• energy: Energy efﬁciency comprises 768 samples from energy analysis using 12 different
+building shapes simulated in Ecotect. The 8-dimensional input data represent attributes
+such as Wall Area, Roof Area, Overall Height and Orientation of the building, etc. As for
+outputs, we use the second one out of the two response variables for numerical study. The
+main learning task is to predict Cooling Load of the building when the input observation is
+available.
+• ILPD: The data set Indian Liver Patient Data set contains 416 liver patient records and 167
+non liver patient records. The data set was collected from 441 male patients and 142 female
+32
+patients in north east of Andhra Pradesh, India. The data set consists of ten attributes such
+as Age, Gender, etc and the response variable Selector is a class label used to divide
+into groups liver patient or not.
+• ozone: The database ozone available on UCI contains 2536 observations of dimension 73.
+Two ground ozone level data including the eight hour peak data and the one hour peak data
+is collected from 1998 to 2004 at the Houston, Galveston and Brazoria area. The learning
+goal is to predict the total column of ozone at any unobserved location.
+• Statlog: This data set containing 690 observations of dimension 14 concerns credit card
+applications. It is interesting because there is a good mix of attributes – continuous, nominal
+with small numbers of values, nominal with larger numbers of values and also a few missing
+values. The data is used to predict the response A1 and to notify, all attribute names and
+values have been changed to meaningless symbols to protect conﬁdentiality of the data.
+The following table summarizes the classiﬁcation errors on test data of the UCI data sets. Here, n
+and d denote sample size and dimension, respectively. We mention that the hyper-parameters of
+each algorithm are selected by 3-fold cross-validation, and all the experiments are repeated for 50
+times.
+Having scrutinized the classiﬁcation errors presented in Table 1, we come to the conclusion
+that our best-scored random forest algorithm performs best among the above mentioned state-of-art
+classiﬁcation algorithms. Finally, we mention that experimental results presented in Table 1 are
+those we have temporarily tuned. Interested readers can further tune the free parameters and more
+accurate results could be obtained.
+33
+Table 1: Classiﬁcation Error on Test Data of UCI Data Sets (%)
+Data Sets (n,d) RF ExtRa k-NN SVMs BRF
+monks (601,6) 0.6613∗ 0.6597∗ 0.6589∗ 0.6587∗ 0.6681
+(±0.0017) ( ±0.0065) ( ±0.0044) ( ±0.0052) ( ±0.0024)
+bcw (699,9) 0.9683∗ 0.9698∗ 0.9632∗ 0.9657∗ 0.9720
+(±0.0099) ( ±0.0104) ( ±0.0104) ( ±0.01217) ( ±0.0104)
+energy (768,8) 0.9156∗ 0.9174 0 .8956∗ 0.9169 0.9204
+(±0.0168) ( ±0.0180) ( ±0.0163) ( ±0.0181) ( ±0.0153)
+ILPD (583,9) 0.6969∗ 0.7041∗ 0.6954∗ 0.7006∗ 0.7113
+(±0.0299) ( ±0.0285) ( ±0.0273) ( ±0.0232) ( ±0.0128)
+ozone (2536,72) 0.9702∗ 0.9707∗ 0.9698∗ 0.9698∗ 0.9711
+(±0.0012) ( ±0.0010) ( ±0.0023) ( ±0.0029) ( ±0.0000)
+Statlog (690,14) 0.6717 0 .6670∗ 0.6334∗ 0.6709 0.6727
+(±0.0202) ( ±0.0205) ( ±0.0302) ( ±0.0145) ( ±0.0124)
+* indicates that our classiﬁcation accuracy improvement over other algorithms is also supported by Wilcoxon
+signed ranked test (Demsar (2006)) which assures the statistical signiﬁcance at level 0.05.
+7 Proofs
+To prove Proposition 4.1, we need the following result which follows from Lemma 6.2 in Devroye
+(1986).
+Lemma 7.1. For a binary search tree withn nodes, denote the saturation level Sn as the number
+of full levels of nodes in the tree. Then for k≥

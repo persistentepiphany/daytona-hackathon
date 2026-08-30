@@ -1,0 +1,23 @@
+{
+  "data": { "dir": "localdata" },
+  "c1": {
+    "dataset": "monks",
+    "split_ratio": 0.7,
+    "seed_offset": 0,
+    "n_estimators": 50,
+    "max_depth": 10,
+    "k_candidates": 20,
+    "a_cut_point": 0.1,
+    "repetitions": 2
+  },
+  "c2": {
+    "dataset": "bcw",
+    "split_ratio": 0.7,
+    "seed_offset": 0,
+    "n_estimators": 50,
+    "max_depth": 10,
+    "k_candidates": 20,
+    "a_cut_point": 0.1,
+    "repetitions": 2
+  }
+}

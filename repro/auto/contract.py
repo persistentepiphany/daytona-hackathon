@@ -102,6 +102,11 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
         rule = dict(entry["rule"])
         rule.setdefault("target", claim["reported_value"])
         rule.setdefault("aggregate", "mean")
+        # the planner sometimes returns these as strings; p3 does arithmetic on
+        # them and raises TypeError after the compute has already been paid for
+        for key in ("target", "tolerance"):
+            if key in rule and rule[key] is not None:
+                rule[key] = float(rule[key])
         entry["rule"] = rule
         experiments.append(entry)
     if not experiments:
@@ -126,3 +131,25 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
             raise RoleError(f"no tolerance for claim {c['id']}")
         tolerances[c["id"]] = float(tol)
     return paper, claims, deduped, tolerances, seeds
+
+
+# Used only after the normal rounds are exhausted on environment failures (an
+# unreachable dataset host, a package that will not build). It trades the
+# paper's real data for a self-generated stand-in so the candidate code at least
+# executes. Nothing produced under it can be compared to the paper's numbers,
+# and the driver relabels every verdict accordingly.
+SYNTHETIC_FALLBACK = """
+DEGRADED MODE - the previous attempts failed on environment problems, most often
+because the dataset host is unreachable from this sandbox. Do not try to
+download anything again.
+
+Instead, have dataio.load_split(data_dir, split) GENERATE a synthetic dataset in
+memory from the claim's condition (its sample count, feature count and class
+balance where stated; otherwise pick something reasonable and say so in notes).
+Return (X, y) as numpy arrays for both "train" and "test". Everything else in
+the contract is unchanged: train.py, config.json and smoke.sh keep their exact
+interfaces.
+
+Be aware: results produced this way do NOT reproduce the paper and will be
+labelled as such. The point is that the implementation runs at all.
+"""

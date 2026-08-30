@@ -263,3 +263,46 @@ One row short of a full table: `exp_svc` graded NOT ATTEMPTABLE because two
 concurrent experiments raced the ledger's SQLite connection into "cannot commit
 - no transaction is active". P2 now runs one experiment at a time (commit
 22403a0); the underlying ledger concurrency is still worth fixing.
+
+## Second paper: Best-scored Random Forest (`auto-1788101831`) — FAILED at P1
+
+The first paper other than the calibration target, added with **no code changes**
+— `papers/best-scored-rf/` is three data files and nothing else.
+
+### What worked, unassisted
+
+1. The classifier labelled it class 1 (`reported_numbers`) correctly.
+2. The Planner read Table 1 of a paper it had never seen, identified BRF as the
+   paper's own method, and extracted `monks` 0.6681 and `bcw` 0.972. On the first
+   attempt it also used the paper's own reported standard deviations as
+   tolerances (0.0024, 0.0104); on the retry it chose looser round numbers
+   (0.01, 0.02) — the targets are stable across runs, the tolerances are not.
+3. It logged 11 ambiguities, against 3–9 for Fashion-MNIST: the paper is
+   materially less specified, which is the correct reading.
+
+### Why it failed
+
+All four implementer rounds died acquiring data from `archive.ics.uci.edu`
+(round 1 `curl` exit 35, rounds 2–4 the same host via `requests`). No S₀, no
+experiments, no verdicts.
+
+This is documented behavior, not a surprise: README section 3 records that
+sandbox egress on the default tier is allowlisted (pypi, npm, github,
+huggingface reachable; **UCI**, Springer, arXiv reset), and that Fashion-MNIST
+was chosen *because* its data is reachable from that allowlist. The paper was
+selected without checking that constraint.
+
+### The real defect this exposed
+
+`repro/auto/build.py:94` calls `implementer.apply_proposal(session, proposal)`
+without the `parallel` argument the function accepts. The architecture defines
+**search-on-failure** for precisely this case — "when the same error recurs
+twice, one Parallel search may resolve environment mechanics (versions,
+**mirrors**, build flags)" — so the Implementer should have been able to search
+for a reachable mirror after round 2. It could not, and spent rounds 3 and 4
+re-trying the same unreachable host with a different HTTP client. Wiring the
+Parallel client into the build loop is a one-line fix plus a feedback-packet
+change telling the role that searching is available.
+
+Every round's proposed source is committed under
+`results/auto/auto-1788101831/candidate/round{1..4}/`.
