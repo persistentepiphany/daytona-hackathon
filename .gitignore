@@ -8,6 +8,7 @@ build/
 ledger.db
 runs/
 .env
+.claude/
 papers/_inbox/
 node_modules/
 .manus-logs/
