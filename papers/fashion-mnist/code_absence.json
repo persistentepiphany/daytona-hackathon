@@ -1,0 +1,43 @@
+{
+  "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms",
+  "queries": [
+    "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms official source code repository",
+    "Fashion-MNIST zalandoresearch github official"
+  ],
+  "results": [
+    {
+      "url": "https://github.com/zalandoresearch/fashion-mnist",
+      "title": "GitHub - zalandoresearch/fashion-mnist: A MNIST-like fashion product database. Benchmark \u00b7 GitHub"
+    },
+    {
+      "url": "https://www.kaggle.com/datasets/zalando-research/fashionmnist",
+      "title": "Fashion MNIST"
+    },
+    {
+      "url": "https://arxiv.org/abs/1708.07747",
+      "title": "[1708.07747] Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms"
+    },
+    {
+      "url": "http://ui.adsabs.harvard.edu/abs/2017arXiv170807747X/abstract",
+      "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms - ADS"
+    },
+    {
+      "url": "https://www.tensorflow.org/datasets/catalog/fashion_mnist",
+      "title": "fashion_mnist - Datasets"
+    },
+    {
+      "url": "https://arxiv.org/pdf/1708.07747",
+      "title": "Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms"
+    },
+    {
+      "url": "https://archive.org/details/github.com-zalandoresearch-fashion-mnist_-_2017-08-26_10-19-41",
+      "title": "github.com-zalandoresearch-fashion-mnist_-_2017-08-26_10-19-41 : zalandoresearch : Free Download, Borrow, and Streaming : Internet Archive"
+    },
+    {
+      "url": "https://github.com/zalandoresearch/fashion-mnist/blob/master/README.md",
+      "title": "fashion-mnist/README.md at master \u00b7 zalandoresearch/fashion-mnist \u00b7 GitHub"
+    }
+  ],
+  "status": "COMPLETED",
+  "conclusion": "OFFICIAL CODE EXISTS - wedge criterion deliberately not satisfied by the calibration target"
+}
