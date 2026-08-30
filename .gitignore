@@ -8,3 +8,8 @@ build/
 ledger.db
 runs/
 .env
+papers/_inbox/
+node_modules/
+.manus-logs/
+.vite/
+.vercel

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="Snapshot">
+  <!-- Registration frame -->
+  <rect x="3.5" y="3.5" width="25" height="25" stroke="#ffffff" stroke-width="1.5"/>
+  <!-- Corner crop marks -->
+  <path d="M3.5 9.5H1M9.5 3.5V1M28.5 9.5H31M22.5 3.5V1M3.5 22.5H1M9.5 28.5V31M28.5 22.5H31M22.5 28.5V31" stroke="#ffffff" stroke-width="1.5" stroke-linecap="square"/>
+  <!-- Frozen sheet -->
+  <rect x="9" y="8" width="14" height="16" fill="none" stroke="#ffffff" stroke-width="1.25"/>
+  <!-- Cyan evidence beam / freeze lock -->
+  <path d="M11.5 14H20.5M11.5 18H17.5" stroke="#0c8aa5" stroke-width="1.5" stroke-linecap="square"/>
+  <circle cx="20.5" cy="18" r="1.6" fill="#0c8aa5"/>
+</svg>
