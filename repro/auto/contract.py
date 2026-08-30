@@ -71,6 +71,31 @@ def validate_proposal(proposal: dict) -> dict:
     return proposal
 
 
+def _complete_rule(rule: dict | None, claim: dict, tolerances: dict) -> dict:
+    """Return a rule p3_verdict can actually grade.
+
+    The Planner's rules arrive underspecified in several ways - a missing
+    target, a missing tolerance, numbers as strings - and p3 does arithmetic on
+    all three. Every gap it leaves crashes the grader *after* the experiments
+    have run, so the rule is completed and type-checked here, before the
+    preregistration is frozen.
+    """
+    out = dict(rule or {})
+    out.setdefault("kind", "abs_tolerance")
+    out.setdefault("aggregate", "mean")
+    out.setdefault("id", f"R-{claim['id']}")
+    if out.get("target") is None:
+        out["target"] = claim["reported_value"]
+    if out.get("tolerance") is None:
+        out["tolerance"] = tolerances.get(claim["id"])
+    for key in ("target", "tolerance"):
+        if out.get(key) is None:
+            raise RoleError(f"claim {claim['id']}: rule has no {key} and none could "
+                            f"be derived; refusing to freeze an ungradeable prereg")
+        out[key] = float(out[key])
+    return out
+
+
 def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
                   max_claims: int = 2) -> tuple[dict, list[dict], list[dict],
                                                 dict[str, float], list[int]]:
@@ -99,15 +124,8 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
         entry.setdefault("condition", claim.get("condition"))
         # p3_verdict does observed - rule["target"]; a planner rule that omits it
         # would crash the grader after the compute has already been paid for
-        rule = dict(entry["rule"])
-        rule.setdefault("target", claim["reported_value"])
-        rule.setdefault("aggregate", "mean")
-        # the planner sometimes returns these as strings; p3 does arithmetic on
-        # them and raises TypeError after the compute has already been paid for
-        for key in ("target", "tolerance"):
-            if key in rule and rule[key] is not None:
-                rule[key] = float(rule[key])
-        entry["rule"] = rule
+        entry["rule"] = _complete_rule(entry.get("rule"), claim,
+                                       proposal.get("tolerances") or {})
         experiments.append(entry)
     if not experiments:
         raise RoleError("planner proposed no reproduce experiment for the kept claims")
@@ -121,15 +139,9 @@ def prereg_inputs(paper: dict, proposal: dict, seeds: list[int],
     keep = {e["claim_id"] for e in deduped}
     claims = [c for c in claims if c["id"] in keep]
 
-    tolerances = {}
-    for c in claims:
-        tol = (proposal.get("tolerances") or {}).get(c["id"])
-        if tol is None:
-            rule = next(e["rule"] for e in deduped if e["claim_id"] == c["id"])
-            tol = rule.get("tolerance")
-        if tol is None:
-            raise RoleError(f"no tolerance for claim {c['id']}")
-        tolerances[c["id"]] = float(tol)
+    tolerances = {c["id"]: next(e["rule"]["tolerance"] for e in deduped
+                                if e["claim_id"] == c["id"])
+                  for c in claims}
     return paper, claims, deduped, tolerances, seeds
 
 
