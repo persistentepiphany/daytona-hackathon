@@ -9,6 +9,7 @@ the evidence volume when one is mounted.
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 from ..orchestrator.adapter import SandboxAdapter
@@ -39,11 +40,22 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
         manifest["seeds"], claim_id=manifest["claim_id"], cost_est=ttl,
     )
     env_vars = {"PIP_NO_INDEX": "1", "NO_NETWORK": "1"} if hermetic else {}
-    sid = life.create(
-        "experiment", name=f"{exp_id.lower()}-{run_id}"[:48], snapshot=s0_snapshot,
-        exp_id=exp_id, ttl_minutes=ttl, volumes=volumes,
-        network_block_all=hermetic, env_vars=env_vars,
-    )
+    sid = None
+    for attempt in range(3):  # concurrent creates can hit transient quota races
+        try:
+            sid = life.create(
+                "experiment", name=f"{exp_id.lower()}-{run_id}"[:48], snapshot=s0_snapshot,
+                exp_id=exp_id, ttl_minutes=ttl, volumes=volumes,
+                network_block_all=hermetic, env_vars=env_vars,
+            )
+            break
+        except Exception as e:
+            ledger.log_event(run_id, "sandbox_create_retry",
+                             {"exp_id": exp_id, "attempt": attempt + 1, "error": str(e)[:300]})
+            if attempt == 2:
+                ledger.finish_attempt(attempt_id, 1, None)
+                raise
+            time.sleep(20 * (attempt + 1))
     ledger.bind_sandbox(attempt_id, sid)
     evidence_dir = Path(evidence_root) / exp_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
