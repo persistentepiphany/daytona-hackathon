@@ -23,5 +23,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["repro*"]
 
+[tool.setuptools.package-data]
+repro = ["*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
