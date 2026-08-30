@@ -79,7 +79,11 @@ python scripts/publish_auto.py          # deploy the preview for the latest auto
 ```
 
 Live preview (autonomous run `auto-1788099837`):
-`https://8000-b531aa54-89c3-4c19-b6ce-625bc5ed1155.daytonaproxy01.eu`
+`https://8000-c0110205-5d52-405a-ba61-6e870fec54a7.daytonaproxy01.eu`
+
+Second paper (`papers/best-scored-rf`, added with no code changes) failed at P1:
+all four implementer rounds could not reach `archive.ics.uci.edu`, which sandbox
+egress does not allowlist. See PROGRESS.md for the trail.
 
 Committed artifacts: `results/auto/auto-1788099837/` — `prereg.json` (the
 model-written contract), `build.json` (the implementer round and the four files

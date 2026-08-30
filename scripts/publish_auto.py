@@ -30,7 +30,7 @@ def main() -> int:
     verdicts = json.loads((run_dir / "verdicts.json").read_text())
     ledger = Ledger(RUN_ROOT / "ledger.db")
     gates = Gates(ledger)
-    budget = Budget(ledger, run_id, {"sandbox_minutes": 1500})
+    budget = Budget(ledger, run_id, {"sandbox_minutes": 4000})  # publishing charges the run again; the deploy asks for a 12h demo window
     adapter = DaytonaAdapter()
     life = Lifecycle(adapter, ledger, gates, budget, run_id)
 
