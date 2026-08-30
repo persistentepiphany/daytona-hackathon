@@ -57,5 +57,13 @@ python -m pytest -q                                                    # 47 pass
 
 ## 4. Status of the autonomous path
 
-<!-- STATUS -->
-Run in progress; this section is rewritten when it completes.
+**Not green — demo the calibration path (section 1).**
+
+The autonomous path builds a model-written contract and a model-written S₀
+reliably (3 of 3 attempts reached a passing smoke gate, one of them recovering
+from two failed rounds), but no run has produced graded verdicts yet. Two
+defects are open; both are written up in PROGRESS.md under "Autonomous driver".
+The branch `auto-driver` is pushed and deliberately unmerged.
+
+Live preview URL (from the calibration path, run `e2e-1788097734`):
+`https://8000-886e29d5-2053-45f4-806a-cba62608aca1.daytonaproxy01.eu`
