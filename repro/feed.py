@@ -168,6 +168,41 @@ def _follow(write, db, bus, q, run_id, last_id, width, default_attempt_s, planne
         time.sleep(POLL_SECONDS)
 
 
+def iter_frames(ledger_path: str, run_id: str, after: int = 0, paced: bool = False,
+                speed: float = 1.0, width: int = 2, default_attempt_s: float = 900.0,
+                planned: int | None = None, idle_timeout: float | None = None):
+    """The same stream as the stdlib handler, yielded rather than written.
+
+    Lets an ASGI app (the run API) serve the identical bytes without duplicating the
+    catch-up, hand-over and replay logic. With no bus it tails the ledger by polling,
+    which is what watching another process's run requires anyway.
+    """
+    import threading
+
+    frames: queue.Queue = queue.Queue(maxsize=1024)
+    done = object()
+
+    def run():
+        db = sqlite3.connect(ledger_path)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA busy_timeout=5000")
+        try:
+            stream(frames.put, db, None, run_id, after, paced, speed, width,
+                   default_attempt_s, planned, stop_when_idle=idle_timeout)
+        except Exception:
+            pass  # a dropped viewer is not an error
+        finally:
+            db.close()
+            frames.put(done)
+
+    threading.Thread(target=run, name=f"feed-{run_id}", daemon=True).start()
+    while True:
+        item = frames.get()
+        if item is done:
+            return
+        yield item
+
+
 # ---------------------------------------------------------------------------
 # server
 # ---------------------------------------------------------------------------

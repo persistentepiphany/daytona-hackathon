@@ -208,7 +208,9 @@ function renderEstimate(e) {
   cL.textContent = `ceiling ${secs(ceil)} — enforced upper bound (remaining TTLs, capped by budget)`;
 }
 
-const src = new EventSource("/events?" + qs.toString());
+// path-relative on purpose: this resolves to /events when the page is served at
+// the root, and to /runs/<job>/events when it is mounted under the run API
+const src = new EventSource("events?" + qs.toString());
 src.onopen = () => document.getElementById("conn").textContent = "· connected";
 src.onerror = () => document.getElementById("conn").textContent = "· reconnecting…";
 src.onmessage = ev => { const m = JSON.parse(ev.data);

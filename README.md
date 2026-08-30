@@ -143,6 +143,19 @@ do that for themselves.
    `write`/`run` actions through the real action choke point, so what appears in the
    browser is produced by the same code path a real run uses.
 
+### From the run API
+
+`server.py` runs each reproduction in its own process, so a run started over HTTP can be
+watched while it happens:
+
+1. `POST /runs` as usual — the worker now sets `REPRO_TELEMETRY=1` for the run it spawns.
+2. `GET /runs/{job_id}` reports a `feed_url`.
+3. Open `GET /runs/{job_id}/feed` in a browser. It streams from
+   `GET /runs/{job_id}/events`, which tails that run's ledger — the same path replay
+   uses, because the run is in a different process and there is no shared bus.
+
+Opening the feed before the run has picked a run id waits rather than failing.
+
 ### Replay mode
 
 `--replay paced --speed N` (or `?replay=paced&speed=N` on the URL) replays a finished

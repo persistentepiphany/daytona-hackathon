@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 REPO = Path(__file__).resolve().parent
@@ -98,6 +98,9 @@ def _worker() -> None:
                     [sys.executable, "scripts/auto_run.py", job["paper_dir"],
                      "--seeds", job["seeds"]],
                     cwd=REPO, stdout=out, stderr=subprocess.STDOUT, timeout=3600,
+                    # the run happens in its own process, so it opts into the feed
+                    # here; GET /runs/{job_id}/feed then tails its ledger
+                    env={**os.environ, "REPRO_TELEMETRY": "1"},
                 )
             code = proc.returncode
         except subprocess.TimeoutExpired:
@@ -197,7 +200,59 @@ def get_run(job_id: str) -> dict:
             # 'NOT COMPARABLE' and the real grade sits in graded_verdict_withheld
             out["degraded"] = bool(parsed.get("degraded"))
         out["has_report"] = (RUN_ROOT / job["run_id"] / "report.md").is_file()
+        out["feed_url"] = f"/runs/{job_id}/feed"
     return out
+
+
+LEDGER = RUN_ROOT / "ledger.db"
+
+
+def _run_id_for(job_id: str, wait_s: float = 0.0) -> str | None:
+    """A job is queued before its run exists, so a viewer who opens the feed early has
+    to be waited for rather than refused."""
+    deadline = time.time() + wait_s
+    while True:
+        job = _jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="no such job")
+        if job.get("run_id"):
+            return job["run_id"]
+        if time.time() >= deadline:
+            return None
+        time.sleep(1)
+
+
+@app.get("/runs/{job_id}/feed", response_class=HTMLResponse)
+def run_feed(job_id: str) -> str:
+    """The live feed for one run: activity, attempt grid, gates, verdicts, timings."""
+    from repro import feed
+
+    _run_id_for(job_id)  # 404s on an unknown job
+    return feed.PAGE
+
+
+@app.get("/runs/{job_id}/events")
+def run_events(job_id: str, after: int = 0, replay: str | None = None,
+               speed: float = 1.0):
+    """The run's event stream, as server-sent events.
+
+    The run is a separate process, so this tails its ledger rather than sharing a bus -
+    the same path `repro feed` uses to replay a finished run.
+    """
+    from repro import feed
+
+    run_id = _run_id_for(job_id, wait_s=30)
+    if run_id is None:
+        raise HTTPException(status_code=409, detail="run has not started yet; retry")
+    if not LEDGER.is_file():
+        raise HTTPException(status_code=404, detail="no ledger for this run yet")
+    return StreamingResponse(
+        feed.iter_frames(str(LEDGER), run_id, after=after,
+                         paced=(replay == "paced"), speed=max(1.0, speed),
+                         idle_timeout=900),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/runs/{job_id}/report", response_class=PlainTextResponse)
