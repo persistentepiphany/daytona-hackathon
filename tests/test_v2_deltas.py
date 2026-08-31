@@ -19,7 +19,7 @@ from repro.orchestrator.policy import load_policy, parallel_stages
 from repro.orchestrator.prereg import PreregError, build_mc_rule, sha256_of
 from repro.orchestrator.schemas import SchemaError, normalize_claim, validate_ambiguity
 from repro.pipeline import p3_verdict as p3
-from repro.pipeline.p0_intake import (IntakeDeclined, evaluate_code_existence,
+from repro.pipeline.p0_intake import (IntakeDeclined, evaluate_code_envelope, evaluate_code_existence,
                                       intake_decision)
 from repro.pipeline.p2_experiments import (candidate_tarball, deliver_candidate,
                                            reconstruct_attempt, run_experiment)
@@ -208,6 +208,35 @@ def test_synthetic_mode_skips_staging_and_checksums(stack, tmp_path):
     assert replay["manifest"]["condition"]["n"] == 100
 
 
+def test_no_external_data_mode_prepares_interface_without_synthetic_label(stack, tmp_path):
+    adapter, ledger, _gates, life = stack
+    h = sha256_of(PREREG)
+    manifest = build_manifest(PREREG, h, "E001")
+    adapter.exec_responses["runner.sh"] = ExecResult(0, "")
+    metrics = {"experiment_id": "E001", "claim_id": "C1", "type": "reproduce",
+               "metric": "m", "rows": [], "mean_value": 0.5, "min_value": 0.5,
+               "max_value": 0.5, "n_seeds": 5}
+    real_create = adapter.create
+
+    def create_and_seed(spec):
+        sid = real_create(spec)
+        work = "/home/daytona/work"
+        adapter.files[(sid, f"{work}/metrics.json")] = json.dumps(metrics).encode()
+        adapter.files[(sid, f"{work}/stdout.log")] = b"ok"
+        adapter.files[(sid, f"{work}/leakage.json")] = b"{}"
+        return sid
+
+    adapter.create = create_and_seed
+    out = run_experiment(life, adapter, ledger, RUN, PREREG, h, manifest, "base",
+                         dataset_hashes={}, evidence_root=tmp_path / "ev-none",
+                         data_mode="none")
+    assert out["mean_value"] == 0.5
+    assert any("mkdir -p /home/daytona/work/localdata" in cmd
+               for _, cmd in adapter.exec_log)
+    assert not ledger.events_for(RUN, "synthetic_data")
+    assert ledger.events_for(RUN, "no_external_data")
+
+
 def test_manifest_condition_is_gated():
     h = sha256_of(PREREG)
     m = build_manifest(PREREG, h, "E001")
@@ -222,6 +251,17 @@ def test_executor_module_is_llm_free():
     src = Path(p2.__file__).read_text()
     for forbidden in ("anthropic", "roles.base", "roles.implementer", "LLMProvider"):
         assert forbidden not in src
+
+
+def test_code_envelope_preserves_search_provenance():
+    outcome, certificate = evaluate_code_envelope({
+        "results": [],
+        "certificate": {"status": "COMPLETED", "queries": ["paper github code"],
+                        "search_results_reviewed": 8},
+    })
+    assert outcome == "NOT_FOUND"
+    assert certificate["queries"] == ["paper github code"]
+    assert certificate["search_results_reviewed"] == 8
 
 
 # T5 -------------------------------------------------------------------------

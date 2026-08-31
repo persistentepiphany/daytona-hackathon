@@ -77,6 +77,16 @@ def evaluate_code_existence(results: list[dict],
     return "REFERENCED_BUT_DEAD", dict(certificate, outcome="REFERENCED_BUT_DEAD")
 
 
+def evaluate_code_envelope(envelope: dict) -> tuple[str, dict]:
+    """Re-evaluate the gate while preserving its persisted search provenance."""
+    results = envelope.get("results") or []
+    outcome, evaluated = evaluate_code_existence(
+        results, link_alive={result["url"]: True for result in results}
+    )
+    source = envelope.get("certificate") or envelope
+    return outcome, {**source, **evaluated, "outcome": outcome}
+
+
 def intake_decision(paper_class: int, code_outcome: str) -> dict:
     """The single deterministic gate: proceed only for class-1 papers whose code
     search came back NOT_FOUND or REFERENCED_BUT_DEAD."""

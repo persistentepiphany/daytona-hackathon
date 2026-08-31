@@ -38,7 +38,7 @@ def stage_datasets(lifecycle: Lifecycle, adapter: SandboxAdapter, ledger: Ledger
         for name, url in files.items():
             dest = f"{MOUNT}/{subdir}/{name}"
             try:
-                data, control_sha = fetch_dataset(url)
+                data, control_sha = fetch_dataset(url, filename=name)
             except Exception as exc:
                 raise StagingError(f"control-plane download failed for {url}: {exc}") from exc
             adapter.write_file(sid, dest, data)

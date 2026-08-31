@@ -1,6 +1,8 @@
 import json
 import socket
 import time
+import io
+import zipfile
 from dataclasses import replace
 
 import httpx
@@ -11,12 +13,16 @@ from sqlalchemy.orm import Session
 
 from repro.service.arxiv import ArxivInputError, extract_pdf, fetch_metadata, normalize_arxiv_id
 from repro.service.config import settings
-from repro.service.data_staging import DatasetUnavailable, validate_dataset_url
+from repro.service.code_search import code_release_candidates
+from repro.service.data_staging import (DatasetUnavailable, fetch_dataset,
+                                        resolve_dataset_source, validate_dataset_url)
 from repro.service.github_publish import GitHubPublishError, GitHubPublisher, repo_slug
 from repro.service.packaging import UnsafeArtifact, collect_run_artifacts
 from repro.service.models import Base, EphemeralBlob, Paper
 from repro.service.object_store import ObjectStore, ObjectStoreError
 from repro.service.repository import seed_bundled_papers
+from repro.service.tasks import _with_paper_identity
+from repro.auto.contract import required_data_requirements
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -59,6 +65,27 @@ def test_arxiv_metadata_is_fetched_from_official_api():
         metadata = fetch_metadata("https://arxiv.org/abs/1708.07747", client)
     assert metadata["title"] == "A useful paper"
     assert metadata["authors"] == ["Ada Researcher"]
+
+
+def test_code_gate_ignores_paper_pages_and_unrelated_repositories():
+    results = [
+        {"url": "https://arxiv.org/abs/1905.11028", "title": "Best-scored Random Forest Classification"},
+        {"url": "https://github.com/newton-physics/newton/blob/main/LICENSE.md",
+         "title": "newton/LICENSE.md"},
+        {"url": "https://github.com/example/random-forest",
+         "title": "Random Forest Classification tutorial"},
+    ]
+    assert code_release_candidates(
+        results, "A New Modified Newton Method use of Haar wavelet", ["Bijaya Mishra"]
+    ) == []
+
+
+def test_code_gate_promotes_relevant_code_host_results():
+    result = {"url": "https://github.com/zalandoresearch/fashion-mnist",
+              "title": "Fashion-MNIST benchmark implementation"}
+    assert code_release_candidates(
+        [result], "Fashion-MNIST: a Novel Image Dataset", ["Han Xiao"]
+    ) == [result]
 
 
 def test_sparse_pdf_is_preserved_but_requires_ocr(tmp_path):
@@ -136,6 +163,51 @@ def test_dataset_ssrf_guard_requires_https():
         validate_dataset_url("http://data.example/dataset.zip")
 
 
+def test_reviewed_uci_landing_page_resolves_to_exact_archive_member():
+    url, member = resolve_dataset_source(
+        "https://archive.ics.uci.edu/ml/datasets/MONK%27s+Problems", "monks-2.train"
+    )
+    assert url == "https://archive.ics.uci.edu/static/public/70/monk+s+problems.zip"
+    assert member == "monks-2.train"
+
+
+def test_uci_archive_extracts_only_declared_file(monkeypatch):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("nested/monks-2.train", b"verified rows")
+        archive.writestr("nested/other.txt", b"not selected")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/static/public/70/monk+s+problems.zip"
+        return httpx.Response(200, content=buffer.getvalue())
+
+    monkeypatch.setattr("repro.service.data_staging.validate_dataset_url", lambda _url: None)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        data, digest = fetch_dataset(
+            "https://archive.ics.uci.edu/ml/datasets/MONK%27s+Problems",
+            filename="monks-2.train", client=client,
+        )
+    assert data == b"verified rows"
+    assert len(digest) == 64
+
+
+def test_dataset_download_retries_transient_gateway_failure(monkeypatch):
+    attempts = 0
+
+    def respond(_request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return (httpx.Response(502) if attempts == 1
+                else httpx.Response(200, content=b"verified dataset"))
+
+    monkeypatch.setattr("repro.service.data_staging.validate_dataset_url", lambda _url: None)
+    monkeypatch.setattr("repro.service.data_staging.time.sleep", lambda _seconds: None)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        data, _digest = fetch_dataset("https://data.example/dataset.csv", client=client)
+    assert attempts == 2
+    assert data == b"verified dataset"
+
+
 def test_artifact_package_excludes_pdf_env_and_binary(tmp_path):
     (tmp_path / "report.md").write_text("safe")
     (tmp_path / "paper.pdf").write_bytes(b"%PDF-secret")
@@ -195,3 +267,21 @@ def test_bundled_paper_with_mismatched_pdf_hash_is_not_runnable():
         assert "hash does not match" in paper.status_detail
         arxiv_ids = [value for value in session.scalars(select(Paper.arxiv_id)).all() if value]
         assert len(arxiv_ids) == len(set(arxiv_ids))
+
+
+def test_service_paper_metadata_gets_preregistration_identity():
+    paper = Paper(id="paper-live", source="arxiv", title="A paper",
+                  pdf_sha256="a" * 64)
+    metadata = _with_paper_identity(paper, {"title": "A paper"})
+    assert metadata["paper_id"] == "paper-live"
+    assert metadata["pdf_sha256"] == "a" * 64
+
+
+def test_optional_dataset_placeholder_is_not_staged():
+    proposal = {"data_requirements": [
+        {"id": "none", "url": None, "filename": "na", "required": False},
+        {"id": "real", "url": "https://data.example/real.csv", "required": True},
+    ]}
+    assert required_data_requirements(proposal) == [
+        {"id": "real", "url": "https://data.example/real.csv", "required": True}
+    ]

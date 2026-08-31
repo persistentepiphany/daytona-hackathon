@@ -19,13 +19,21 @@ from .object_store import store
 from .packaging import collect_run_artifacts, github_snapshot
 
 
+def _with_paper_identity(paper: Paper, metadata: dict) -> dict:
+    metadata = dict(metadata)
+    metadata.setdefault("paper_id", paper.id)
+    metadata.setdefault("pdf_sha256", paper.pdf_sha256)
+    return metadata
+
+
 def _paper_metadata(paper: Paper) -> dict:
     if paper.metadata_key:
-        return json.loads(store.get_bytes(paper.metadata_key).decode())
-    if paper.source_ref:
-        return json.loads((REPO / paper.source_ref / "paper.json").read_text())
-    return {"title": paper.title, "authors": json.loads(paper.authors_json or "[]"),
-            "pdf_sha256": paper.pdf_sha256}
+        metadata = json.loads(store.get_bytes(paper.metadata_key).decode())
+    elif paper.source_ref:
+        metadata = json.loads((REPO / paper.source_ref / "paper.json").read_text())
+    else:
+        metadata = {"title": paper.title, "authors": json.loads(paper.authors_json or "[]")}
+    return _with_paper_identity(paper, metadata)
 
 
 def _record_ingest_failure(paper_id: str, stage: str, exc: Exception) -> None:
@@ -60,7 +68,7 @@ def ingest_arxiv(paper_id: str) -> None:
         code_absence = certify_code_availability(metadata["title"], metadata["authors"])
         prefix = f"papers/{paper_id}"
         pdf_key, text_key, metadata_key = f"{prefix}/paper.pdf", f"{prefix}/paper-extract.txt", f"{prefix}/paper.json"
-        payload = {**metadata, "pdf_sha256": extracted.pdf_sha256,
+        payload = {**metadata, "paper_id": paper_id, "pdf_sha256": extracted.pdf_sha256,
                    "text_sha256": extracted.text_sha256, "pages": extracted.pages,
                    "code_absence": code_absence}
         store.put_bytes(pdf_key, pdf, "application/pdf")
@@ -111,7 +119,7 @@ def complete_upload(upload_id: str) -> None:
             raise ValueError("uploaded PDF sha256 does not match the declared hash")
         prefix = f"papers/{paper_id}"
         text_key, metadata_key = f"{prefix}/paper-extract.txt", f"{prefix}/paper.json"
-        metadata = {"title": upload.filename.rsplit(".", 1)[0], "authors": [],
+        metadata = {"paper_id": paper_id, "title": upload.filename.rsplit(".", 1)[0], "authors": [],
                     "pdf_sha256": extracted.pdf_sha256, "text_sha256": extracted.text_sha256,
                     "pages": extracted.pages, "source": "direct_upload",
                     "code_absence": {"results": [], "outcome": "NOT_FOUND",
@@ -240,11 +248,14 @@ def run_pipeline(job_id: str) -> None:
                  payload={"run_id": pipeline_run_id})
         files = collect_run_artifacts(run_dir)
         prefix = f"runs/{job_id}/{pipeline_run_id}"
+        stored = []
+        for name, data in files.items():
+            key = f"{prefix}/{name}"
+            digest = store.put_bytes(key, data)
+            stored.append((name, data, key, digest))
         with session_scope() as session:
             session.execute(delete(Artifact).where(Artifact.job_id == job_id))
-            for name, data in files.items():
-                key = f"{prefix}/{name}"
-                digest = store.put_bytes(key, data)
+            for name, data, key, digest in stored:
                 session.add(Artifact(id=new_id("art"), job_id=job_id, kind="run_output",
                                      object_key=key, filename=name, sha256=digest, size=len(data)))
             job = session.get(Job, job_id)

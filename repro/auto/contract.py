@@ -46,6 +46,12 @@ MANDATORY OUTPUT CONTRACT - a proposal that omits any of this is rejected unrun:
 REQUIRED_FILES = ("train.py", "config.json", "dataio.py", "smoke.sh")
 
 
+def required_data_requirements(proposal: dict) -> list[dict]:
+    """Return only inputs whose absence must prevent scientific execution."""
+    requirements = proposal.get("data_requirements") or []
+    return [dict(item) for item in requirements if item.get("required", True)]
+
+
 def implementer_system(base_system: str) -> str:
     """Append the executable contract to the Implementer's own system prompt."""
     return base_system + "\n" + CONTRACT

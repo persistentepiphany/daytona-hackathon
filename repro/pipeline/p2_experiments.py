@@ -96,10 +96,16 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
     exit_code = 1
     tap = None
     try:
+        if data_mode in {"synthetic", "none"}:
+            prepared = adapter.exec(sid, f"mkdir -p {WORK}/{data_local_dir}", cwd=WORK)
+            if prepared.exit_code != 0:
+                raise ExperimentError(f"cannot prepare data interface: {prepared.output[-500:]}")
         if data_mode == "synthetic":
             # no staged data: experiments generate from the manifest's condition
             ledger.log_event(run_id, "synthetic_data", {"exp_id": exp_id,
                                                         "condition": manifest.get("condition")})
+        elif data_mode == "none":
+            ledger.log_event(run_id, "no_external_data", {"exp_id": exp_id})
         else:
             _verify_datasets(adapter, sid, dataset_hashes, data_local_dir)
         if candidate_files:

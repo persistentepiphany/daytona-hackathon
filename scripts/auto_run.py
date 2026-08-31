@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from repro.auto.build import MAX_ITERATIONS, build_to_smoke  # noqa: E402
-from repro.auto.contract import prereg_inputs  # noqa: E402
+from repro.auto.contract import prereg_inputs, required_data_requirements  # noqa: E402
 from repro.auto.provider import make_auto_provider  # noqa: E402
 from repro.env import env_key  # noqa: E402
 from repro.orchestrator.budget import Budget  # noqa: E402
@@ -41,7 +41,7 @@ from repro.orchestrator.manifest import build_manifest  # noqa: E402
 from repro.orchestrator.parallel_client import ParallelClient  # noqa: E402
 from repro.orchestrator.prereg import build_prereg, canonical_json, freeze_prereg  # noqa: E402
 from repro.pipeline import p3_verdict as p3  # noqa: E402
-from repro.pipeline.p0_intake import classify_paper, evaluate_code_existence, intake_decision  # noqa: E402
+from repro.pipeline.p0_intake import classify_paper, evaluate_code_envelope, intake_decision  # noqa: E402
 from repro.pipeline.p1_archaeology import ArchaeologySession  # noqa: E402
 from repro.pipeline.p2_experiments import run_experiment  # noqa: E402
 from repro.pipeline.report import generate_report  # noqa: E402
@@ -88,8 +88,7 @@ def run_auto(
     classification = classify_paper(provider, paper_text)
     log(f"P0 paper class {classification['paper_class']} ({classification['label']})")
     code_absence = json.loads((paper_dir / "code_absence.json").read_text())
-    outcome, certificate = evaluate_code_existence(
-        code_absence["results"], link_alive={r["url"]: True for r in code_absence["results"]})
+    outcome, certificate = evaluate_code_envelope(code_absence)
     decision = intake_decision(classification["paper_class"], outcome)
     log(f"P0 code gate {outcome} -> {decision['reason']}")
     if not decision["proceed"]:
@@ -106,7 +105,7 @@ def run_auto(
         (run_dir / "intake.json").write_text(json.dumps(terminal, indent=2))
         (run_dir / "verdicts.json").write_text(json.dumps({
             "run_id": run_id, "verdicts": [], "framing": decision["reason"],
-            "terminal_classification": terminal["classification"],
+            "terminal_classification": terminal["classification"], "code_absence": certificate,
         }, indent=2))
         (run_dir / "report.md").write_text(
             f"# Reproduction intake: {paper.get('title', paper_dir.name)}\n\n"
@@ -122,7 +121,7 @@ def run_auto(
     log(f"planner: {len(proposal['claims'])} claims, "
         f"{len(proposal.get('experiments', []))} experiments, "
         f"{len(proposal.get('ambiguities', []))} ambiguities")
-    data_requirements = proposal.get("data_requirements") or []
+    data_requirements = required_data_requirements(proposal)
     unresolved = [item.get("id", "dataset") for item in data_requirements
                   if item.get("required", True) and not item.get("url")]
     if unresolved:
@@ -163,7 +162,9 @@ def run_auto(
     # ---- Implementer -> archaeology ---------------------------------------
     dataset_hashes: dict[str, str] = {}
     volumes: list[tuple[str, str]] = []
-    data_mode = "synthetic"
+    # No external dataset is not the same as synthetic substitution: numerical
+    # and symbolic papers can be fully specified by equations in the paper.
+    data_mode = "none"
     staged_note = ""
     if data_requirements:
         files = {item.get("filename") or item["id"]: item["url"] for item in data_requirements}
@@ -259,6 +260,9 @@ def run_auto(
             f"(candidate source under candidate/)")
         return 2
 
+    if build_result.get("degraded"):
+        data_mode = "synthetic"
+
     # ---- P2 experiments ---------------------------------------------------
     evidence_root = run_dir / "evidence"
     common = dict(life=life, adapter=adapter, ledger=ledger, run_id=run_id,
@@ -341,7 +345,8 @@ def run_auto(
     verdicts = {"run_id": run_id, "prereg_hash": prereg_hash, "verdicts": rows,
                 "sham": sham_rows, "hermeticity": hermeticity,
                 "degraded": degraded,
-                "framing": doc["framing"], "build": build_result}
+                "framing": doc["framing"], "build": build_result,
+                "code_absence": certificate}
     (run_dir / "verdicts.json").write_text(json.dumps(verdicts, indent=2))
     for r in rows:
         log(f"P3 {r['experiment_id']} {r['claim_id']} observed={r['observed']} -> {r['verdict']}")
