@@ -34,6 +34,43 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] fanout: {msg}", flush=True)
 
 
+def preflight() -> list[str]:
+    """Check every credential a run needs before launching any of them.
+
+    A dead key fails identically in every process, N tracebacks deep and minutes
+    apart. Both roles on the autonomous path are served by Z.AI with no fallback,
+    so a live call is the only check worth making - presence proves nothing: this
+    driver watched a present-but-revoked key return 401 to two pipelines at once.
+    """
+    from repro.env import env_key
+
+    problems = []
+    if not env_key("DAYTONA_API_KEY", "DAYTONA_API"):
+        problems.append("DAYTONA_API_KEY / DAYTONA_API is not set; no sandbox can be created")
+    key = env_key("ZAI_API_KEY", "ZAI_API")
+    if not key:
+        problems.append("ZAI_API_KEY / ZAI_API is not set; the Planner and Implementer "
+                        "cannot run (the autonomous path has no fallback provider)")
+    else:
+        import httpx
+        try:
+            r = httpx.post("https://api.z.ai/api/paas/v4/chat/completions",
+                           headers={"Authorization": f"Bearer {key}",
+                                    "Content-Type": "application/json"},
+                           json={"model": "glm-4.6", "max_tokens": 1,
+                                 "messages": [{"role": "user", "content": "ping"}]},
+                           timeout=45)
+            if r.status_code in (401, 403):
+                problems.append(f"the Z.AI key is present but rejected ({r.status_code}: "
+                                f"{r.text[:120]}); rotate it before launching")
+            elif r.status_code >= 500:
+                print(f"warning: Z.AI returned {r.status_code}; launching anyway")
+        except Exception as e:  # noqa: BLE001 - an unreachable check must not block a run
+            print(f"warning: could not reach Z.AI to check the key ({str(e)[:120]}); "
+                  f"launching anyway")
+    return problems
+
+
 def discover() -> list[Path]:
     return sorted(d for d in PAPERS.iterdir()
                   if (d / "paper.json").is_file() and (d / "paper-extract.txt").is_file())
@@ -106,6 +143,8 @@ def main() -> int:
                          "fits two 4 GiB S0 boxes)")
     ap.add_argument("--seeds", default="17,41,93")
     ap.add_argument("--base-snapshot", default="daytona-medium")
+    ap.add_argument("--skip-preflight", action="store_true",
+                    help="launch without checking credentials first")
     ap.add_argument("--gc-first", action="store_true",
                     help="reclaim quota from finished runs before launching")
     args = ap.parse_args()
@@ -117,6 +156,14 @@ def main() -> int:
     if missing:
         print(f"not a paper directory: {', '.join(str(m) for m in missing)}", file=sys.stderr)
         return 1
+
+    if not args.skip_preflight:
+        problems = preflight()
+        if problems:
+            print("preflight failed; nothing launched:", file=sys.stderr)
+            for p in problems:
+                print(f"  - {p}", file=sys.stderr)
+            return 1
 
     if args.gc_first:
         log("reclaiming quota first (repro gc)")
