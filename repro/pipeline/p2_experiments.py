@@ -21,7 +21,9 @@ from ..orchestrator.prereg import canonical_json
 from .runner_files import LEAKCHECK_PY, RUNNER_PY
 
 WORK = "/home/daytona/work"
-EVIDENCE_FILES = ("manifest.json", "metrics.json", "stdout.log", "leakage.json")
+# stdout.log first: it is what explains any of the others being absent, and the
+# collection below must not abort before it has been pulled
+EVIDENCE_FILES = ("stdout.log", "manifest.json", "metrics.json", "leakage.json")
 
 
 class ExperimentError(RuntimeError):
@@ -120,22 +122,27 @@ def run_experiment(life: Lifecycle, adapter: SandboxAdapter, ledger: Ledger, run
                          env=env_vars or None, timeout=int(manifest["budget"]["ttl_min"]) * 60)
         exit_code = r.exit_code
 
-        checksums = {}
+        checksums, missing = {}, []
         for name in EVIDENCE_FILES:
             try:
                 data = adapter.read_file(sid, f"{WORK}/{name}")
             except FileNotFoundError:
-                if name in manifest["expected_outputs"]:
-                    raise ExperimentError(f"{exp_id}: expected output {name} missing") from None
+                missing.append(name)
                 continue
             (evidence_dir / name).write_bytes(data)
             checksums[name] = hashlib.sha256(data).hexdigest()
+        absent_outputs = [n for n in missing if n in manifest["expected_outputs"]]
         (evidence_dir / "checksums.json").write_text(canonical_json(checksums))
         evidence_sha = hashlib.sha256(canonical_json(checksums).encode()).hexdigest()
 
+        log_path = evidence_dir / "stdout.log"
+        tail = log_path.read_text()[-2000:] if log_path.exists() else "(no stdout.log)"
         if exit_code != 0:
-            tail = (evidence_dir / "stdout.log").read_text()[-2000:] if (evidence_dir / "stdout.log").exists() else ""
             raise ExperimentError(f"{exp_id}: runner exited {exit_code}\n{tail}")
+        if absent_outputs:
+            raise ExperimentError(
+                f"{exp_id}: expected output(s) {', '.join(absent_outputs)} missing "
+                f"though the runner exited 0\n{tail}")
         metrics = json.loads((evidence_dir / "metrics.json").read_text())
         ledger.log_event(run_id, "experiment_done", {
             "experiment_id": exp_id, "attempt_id": attempt_id,

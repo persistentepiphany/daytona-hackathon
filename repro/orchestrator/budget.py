@@ -21,6 +21,21 @@ class Budget:
     def spent(self, kind: str) -> float:
         return self.ledger.sum_charges(self.run_id, kind)
 
+    def check(self, kind: str, amount: float) -> None:
+        """Would this spend exceed the ceiling? Raises without recording anything.
+
+        Callers that can fail after the check (a sandbox create the provider may
+        refuse) check first and charge only once the spend is real.
+        """
+        ceiling = self.ceilings.get(kind)
+        if ceiling is None:
+            return
+        spent = self.spent(kind)
+        if spent + amount > ceiling:
+            raise BudgetExceeded(
+                f"{kind}: {spent} + {amount} exceeds ceiling {ceiling} for run {self.run_id}"
+            )
+
     def charge(self, kind: str, amount: float, note: str | None = None) -> None:
         # read-then-write under one acquisition of the ledger's lock, so the ceiling
         # check and the charge cannot interleave with another thread's charge; doing

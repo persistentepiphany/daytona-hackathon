@@ -15,7 +15,7 @@ from repro.orchestrator import gc as gcmod
 from repro.orchestrator.budget import Budget
 from repro.orchestrator.gates import Gates
 from repro.orchestrator.ledger import Ledger
-from repro.orchestrator.lifecycle import Lifecycle, is_quota_error
+from repro.orchestrator.lifecycle import POLICIES, Lifecycle, is_quota_error
 from tests.fake_adapter import FakeAdapter
 
 RUN = "run-c"
@@ -236,3 +236,39 @@ def test_a_vanished_sandbox_is_not_a_build_failure(text, lost):
     from repro.auto.build import is_environment_lost
 
     assert is_environment_lost(text) is lost
+
+
+def test_a_refused_create_leaves_no_charge(stack, monkeypatch):
+    """20 quota retries used to charge the archaeology TTL 20 times and trip the
+    run's own budget ceiling before a single sandbox existed."""
+    ledger, life = stack
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    calls = {"n": 0}
+    real_create = life.adapter.create
+
+    def flaky(spec):
+        calls["n"] += 1
+        if calls["n"] < 4:
+            raise RuntimeError("Total memory limit exceeded. Maximum allowed: 10GiB.")
+        return real_create(spec)
+
+    monkeypatch.setattr(life.adapter, "create", flaky)
+    before = life.budget.spent("sandbox_minutes")
+    life.create_with_retry("experiment", name="e1", snapshot="s0", wait_seconds=0)
+    # one sandbox exists, so exactly one experiment TTL is charged
+    assert life.budget.spent("sandbox_minutes") - before == POLICIES["experiment"].default_ttl
+
+
+def test_the_ceiling_still_blocks_a_create_before_it_happens(tmp_path):
+    from repro.orchestrator.budget import BudgetExceeded
+
+    ledger = Ledger(tmp_path / "ledger.db")
+    ledger.create_run(RUN, paper_hash="p" * 64, prereg_hash="h" * 64)
+    gates = Gates(ledger)
+    gates.approve(RUN, "G1", "test")
+    adapter = FakeAdapter()
+    adapter.snapshots.add("s0")
+    life = Lifecycle(adapter, ledger, gates, Budget(ledger, RUN, {"sandbox_minutes": 10}), RUN)
+    with pytest.raises(BudgetExceeded):
+        life.create("experiment", name="e1", snapshot="s0")
+    assert not adapter.sandboxes  # refused before the provider was ever called

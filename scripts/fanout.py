@@ -15,9 +15,11 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -38,38 +40,49 @@ def discover() -> list[Path]:
 
 
 def launch(paper_dir: Path, args) -> dict:
-    """One pipeline, one process. Its stdout is teed to a per-paper log file."""
+    """One pipeline, one process, under a run id this driver assigns.
+
+    Naming the run up front is what makes the result attributable: a run that dies
+    before writing its handle used to be reported with a *previous* run's verdicts,
+    because the only way back to a run was the newest handle mentioning the paper.
+    """
     RUN_ROOT.mkdir(parents=True, exist_ok=True)
-    logfile = RUN_ROOT / f"fanout-{paper_dir.name}-{int(time.time())}.log"
+    run_id = f"auto-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    logfile = RUN_ROOT / f"fanout-{paper_dir.name}-{run_id}.log"
     cmd = [sys.executable, str(REPO / "scripts" / "auto_run.py"), str(paper_dir),
-           "--seeds", args.seeds, "--base-snapshot", args.base_snapshot]
+           "--seeds", args.seeds, "--base-snapshot", args.base_snapshot,
+           "--run-id", run_id]
     t0 = time.monotonic()
-    log(f"start {paper_dir.name} -> {logfile.name}")
+    log(f"start {paper_dir.name} as {run_id} -> {logfile.name}")
     with logfile.open("w") as fh:
         proc = subprocess.run(cmd, cwd=REPO, stdout=fh, stderr=subprocess.STDOUT, text=True)
     elapsed = round(time.monotonic() - t0, 1)
     log(f"done  {paper_dir.name} exit={proc.returncode} in {elapsed}s")
-    return {"paper": paper_dir.name, "paper_dir": str(paper_dir), "exit": proc.returncode,
-            "seconds": elapsed, "log": str(logfile), **newest_handle(paper_dir)}
-
-
-def newest_handle(paper_dir: Path) -> dict:
-    """Find the run this launch produced: the newest handle naming this paper."""
-    best, best_mtime = {}, -1.0
-    for handle_path in RUN_ROOT.glob("*/handle.json"):
+    run_dir = RUN_ROOT / run_id
+    handle = {}
+    handle_path = run_dir / "handle.json"
+    if handle_path.is_file():
         try:
             handle = json.loads(handle_path.read_text())
-        except (OSError, ValueError):
-            continue
-        if Path(handle.get("paper_dir", "")).name != paper_dir.name:
-            continue
-        mtime = handle_path.stat().st_mtime
-        if mtime > best_mtime:
-            best, best_mtime = handle, mtime
-    if not best:
-        return {"run_id": None, "run_dir": None}
-    return {"run_id": best.get("run_id"), "run_dir": best.get("run_dir"),
-            "failed_at": best.get("failed_at")}
+        except ValueError:
+            handle = {}
+    return {"paper": paper_dir.name, "paper_dir": str(paper_dir), "exit": proc.returncode,
+            "seconds": elapsed, "log": str(logfile), "run_id": run_id,
+            "run_dir": str(run_dir) if run_dir.is_dir() else None,
+            "failed_at": handle.get("failed_at") or (None if handle else "before_handle"),
+            "failure": None if proc.returncode == 0 else last_error(logfile)}
+
+
+def last_error(logfile: Path) -> str | None:
+    """The last exception line from a crashed run, so the table says why."""
+    try:
+        lines = [ln.rstrip() for ln in logfile.read_text().splitlines() if ln.strip()]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        if re.match(r"^\w[\w.]*(Error|Exception)\b", line) or "Error:" in line:
+            return line[:300]
+    return lines[-1][:300] if lines else None
 
 
 def verdict_rows(run_dir: str | None) -> list[dict]:
@@ -124,6 +137,8 @@ def main() -> int:
     for r in summary["runs"]:
         state = "ok" if r["exit"] == 0 else f"exit {r['exit']}"
         print(f"\n{r['paper']}  [{state}, {r['seconds']}s]  run {r['run_id']}")
+        if r.get("failure"):
+            print(f"  failed: {r['failure']}")
         if not r["verdicts"]:
             print("  (no verdicts; see the run log)")
         for v in r["verdicts"]:

@@ -150,7 +150,16 @@ class DaytonaAdapter:
         return [s.id for s in self.d.list(ListSandboxesQuery(labels={key: value}))]
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
-        data = self._get(sandbox_id).fs.download_file(path)
+        # the SDK raises its own not-found error, which is not what the adapter
+        # contract promises: callers guard optional evidence with
+        # `except FileNotFoundError`, and an untranslated error turned a missing
+        # optional file into a crash that discarded the logs explaining it
+        try:
+            data = self._get(sandbox_id).fs.download_file(path)
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise FileNotFoundError(f"{sandbox_id}:{path}") from e
+            raise
         if data is None:
             raise FileNotFoundError(f"{sandbox_id}:{path}")
         return data

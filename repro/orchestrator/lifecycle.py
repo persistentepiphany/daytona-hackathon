@@ -75,7 +75,9 @@ class Lifecycle:
             self.gates.require(self.run_id, "G2")
         policy = POLICIES[kind]
         ttl = ttl_minutes if ttl_minutes is not None else policy.default_ttl
-        self.budget.charge("sandbox_minutes", ttl, note=f"{kind}:{name}")
+        # check before the spend, charge after it is real: a create the provider
+        # refuses on quota costs nothing, so retrying does not eat the ceiling
+        self.budget.check("sandbox_minutes", ttl)
         labels = {"run": self.run_id, "kind": kind}
         if exp_id:
             labels["exp"] = exp_id
@@ -87,6 +89,7 @@ class Lifecycle:
             env_vars=env_vars or {}, resources=resources,
         )
         sandbox_id = self.adapter.create(spec)
+        self.budget.charge("sandbox_minutes", ttl, note=f"{kind}:{name}")
         self.ledger.log_event(self.run_id, "sandbox_created", {
             "sandbox_id": sandbox_id, "kind": kind, "name": name, "exp_id": exp_id,
             "snapshot": snapshot, "parent_id": None, "ttl_minutes": ttl,
@@ -123,8 +126,9 @@ class Lifecycle:
     def fork(self, parent_id: str, name: str, exp_id: str | None = None) -> str:
         self.gates.require(self.run_id, "G1")
         policy = POLICIES["fork_child"]
-        self.budget.charge("sandbox_minutes", policy.default_ttl, note=f"fork:{name}")
+        self.budget.check("sandbox_minutes", policy.default_ttl)
         child_id = self.adapter.fork(parent_id, name)
+        self.budget.charge("sandbox_minutes", policy.default_ttl, note=f"fork:{name}")
         self.ledger.log_event(self.run_id, "sandbox_created", {
             "sandbox_id": child_id, "kind": "fork_child", "name": name, "exp_id": exp_id,
             "snapshot": None, "parent_id": parent_id, "ttl_minutes": policy.default_ttl,
