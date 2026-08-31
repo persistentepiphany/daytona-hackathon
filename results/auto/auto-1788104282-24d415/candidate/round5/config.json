@@ -1,0 +1,27 @@
+{
+  "data": {
+    "dir": "localdata"
+  },
+  "c_brf_monks": {
+    "dataset": "monks-2",
+    "n_splits": 10,
+    "n_candidates": 10,
+    "max_depth": 5,
+    "n_trees_forest": 50,
+    "param_grid": {
+      "n_estimators": [50, 100],
+      "max_depth": [5, 10, None]
+    }
+  },
+  "c_brf_bcw": {
+    "dataset": "breast_cancer_wisconsin",
+    "n_splits": 10,
+    "n_candidates": 10,
+    "max_depth": 5,
+    "n_trees_forest": 50,
+    "param_grid": {
+      "n_estimators": [50, 100],
+      "max_depth": [5, 10, None]
+    }
+  }
+}

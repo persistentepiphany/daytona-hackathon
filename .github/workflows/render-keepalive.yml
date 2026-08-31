@@ -1,0 +1,37 @@
+name: Keep Render API awake
+
+on:
+  schedule:
+    # GitHub Actions supports five minutes as its shortest scheduled interval.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+# This workflow only makes an outbound health check; it does not need repository access.
+permissions: {}
+
+concurrency:
+  group: render-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      # Set the repository variable RENDER_HEALTHCHECK_URL to use another Render service.
+      RENDER_HEALTHCHECK_URL: ${{ vars.RENDER_HEALTHCHECK_URL || 'https://daytona-repro-api.onrender.com/healthz' }}
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          set -euo pipefail
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --location \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --retry 2 \
+            --retry-all-errors \
+            --output /dev/null \
+            "$RENDER_HEALTHCHECK_URL"

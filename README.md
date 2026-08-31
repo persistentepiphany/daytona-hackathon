@@ -63,6 +63,15 @@ of runs.
 13. `repro feed --ledger <ledger.db> --run-id <id>` — the live feed on `127.0.0.1:8700` (section 10). Add `--replay paced --speed 4` to play a finished run back.
 14. `REPRO_TELEMETRY=1` — turn the live feed on for a run. **It is off by default**, and off means off: no feed events, no sandbox log tap, no extra provider calls. The feed's own scripts set it themselves, so only a hand-run pipeline needs to. Exactly what does and does not differ is stated in section 10.
 
+### Render keepalive
+
+The Render API exposes a fast `GET /healthz` endpoint. The scheduled GitHub Actions
+workflow in `.github/workflows/render-keepalive.yml` calls it every five minutes,
+which prevents an idle service from being suspended. It can also be run manually from
+the Actions tab. By default it targets `https://daytona-repro-api.onrender.com/healthz`;
+set the repository variable `RENDER_HEALTHCHECK_URL` to point at a renamed or different
+Render service without changing code.
+
 ## 5. Day-0 verification (live, against the event account)
 
 1. `create_snapshot` is public API on SDK 0.207.0 and works live: container frozen in 24–36s, fresh sandbox booted from the frozen snapshot in ~4s, **filesystem state preserved across freeze-and-boot** (verified with a marker file in `$HOME`).

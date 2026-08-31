@@ -1,0 +1,21 @@
+{
+  "data": {
+    "dir": "localdata"
+  },
+  "c_brf_monks": {
+    "dataset": "monks-2",
+    "k_candidates": 20,
+    "m_trees": 100,
+    "p_splits": 10,
+    "a_param": 0.2,
+    "n_repetitions": 50
+  },
+  "c_brf_bcw": {
+    "dataset": "breast_cancer_wisconsin",
+    "k_candidates": 20,
+    "m_trees": 100,
+    "p_splits": 15,
+    "a_param": 0.2,
+    "n_repetitions": 50
+  }
+}

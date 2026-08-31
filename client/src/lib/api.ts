@@ -1,4 +1,8 @@
 /** Client for the Render repro API — browser talks to /api/*, proxy strips prefix + injects bearer. */
+import { DEMO_JOB_ID, DEMO_PAPER_DIRS, DEMO_REPORT, DEMO_TOTAL_MS, demoJob, isDemoMode } from "./demo";
+
+/** When the demo run was started this session; null means it has not been triggered yet. */
+let demoStartedAt: number | null = null;
 
 export type PaperSummary = {
   slug: string;
@@ -214,6 +218,7 @@ function mapJob(job: RemoteJob): RunDetail {
 }
 
 export async function fetchHealth(): Promise<boolean> {
+  if (isDemoMode()) return true;
   try {
     const res = await fetch("/api/healthz");
     if (!res.ok) return false;
@@ -225,7 +230,9 @@ export async function fetchHealth(): Promise<boolean> {
 }
 
 export async function fetchPapers(): Promise<PaperSummary[]> {
-  const dirs = await parse<string[]>(await fetch("/api/papers"));
+  const dirs = isDemoMode()
+    ? DEMO_PAPER_DIRS
+    : await parse<string[]>(await fetch("/api/papers"));
   return dirs.map((paper_dir) => {
     const slug = paper_dir.replace(/^papers\//, "");
     return {
@@ -240,7 +247,9 @@ export async function fetchPapers(): Promise<PaperSummary[]> {
 }
 
 export async function fetchRuns(): Promise<RunSummary[]> {
-  const jobs = await parse<RemoteJob[]>(await fetch("/api/runs"));
+  const jobs = isDemoMode()
+    ? (demoStartedAt === null ? [] : [demoJob(Date.now() - demoStartedAt) as unknown as RemoteJob])
+    : await parse<RemoteJob[]>(await fetch("/api/runs"));
   return jobs.map((job) => {
     const detail = mapJob(job);
     return {
@@ -257,6 +266,12 @@ export async function fetchRuns(): Promise<RunSummary[]> {
 }
 
 export async function fetchRun(jobId: string): Promise<RunDetail> {
+  if (isDemoMode()) {
+    const elapsed = demoStartedAt === null ? DEMO_TOTAL_MS : Date.now() - demoStartedAt;
+    const detail = mapJob(demoJob(elapsed) as unknown as RemoteJob);
+    if (elapsed >= DEMO_TOTAL_MS) detail.report = DEMO_REPORT;
+    return detail;
+  }
   const job = await parse<RemoteJob>(await fetch(`/api/runs/${encodeURIComponent(jobId)}`));
   const detail = mapJob(job);
   if (job.has_report && job.run_id) {
@@ -294,6 +309,15 @@ export async function startRun(body: {
   seeds?: string;
   publish?: boolean;
 }): Promise<{ job_id: string; title: string; status: string; paper_slug?: string }> {
+  if (isDemoMode()) {
+    demoStartedAt = Date.now();
+    return {
+      job_id: DEMO_JOB_ID,
+      status: "queued",
+      title: titleForDir("papers/fashion-mnist"),
+      paper_slug: "fashion-mnist",
+    };
+  }
   if (body.paper_text && body.paper_text.trim().length >= 400) {
     throw new Error(
       "Paste-to-run needs the local API. On Render, pick a paper from the sidebar or type its name (e.g. fashion-mnist).",
