@@ -136,7 +136,10 @@ export function demoJob(elapsedMs: number | null): Record<string, unknown> {
     degraded: false,
     duration_s: finished ? 421.7 : Math.round(secs),
     preview_url: finished
-      ? "https://8000-c0110205-5d52-405a-ba61-6e870fec54a7.daytonaproxy01.eu"
+      ? "https://8000-ca2550a2-6608-415f-a96f-cf3d07c8dc4d.daytonaproxy01.eu"
+      : null,
+    github_url: finished
+      ? "https://github.com/dthwwydfli/snapshot-repro-auto-1788104661-48b35d"
       : null,
   };
 }

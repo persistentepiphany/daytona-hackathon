@@ -146,6 +146,7 @@ export default function Dashboard() {
       try {
         const detail = await fetchRun(activeJobId);
         if (cancelled) return;
+        setError(null);
         setActiveRun(detail);
         if (isActiveStatus(detail.status)) {
           timer = window.setTimeout(tick, 2500);
@@ -154,7 +155,10 @@ export default function Dashboard() {
           if (!cancelled) setRuns(r);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (cancelled) return;
+        // Transient Render/proxy blips (502) — keep polling; don't freeze the thread.
+        setError(err instanceof Error ? err.message : String(err));
+        timer = window.setTimeout(tick, 4000);
       }
     };
 
@@ -425,6 +429,14 @@ export default function Dashboard() {
                           Preview:{" "}
                           <a href={detail.preview_url} target="_blank" rel="noreferrer">
                             {detail.preview_url}
+                          </a>
+                        </p>
+                      )}
+                      {detail?.github_url && (
+                        <p className="reasoning-copy">
+                          GitHub:{" "}
+                          <a href={detail.github_url} target="_blank" rel="noreferrer">
+                            {detail.github_url}
                           </a>
                         </p>
                       )}

@@ -56,6 +56,7 @@ export type RunDetail = RunSummary & {
   report?: string | null;
   error?: string | null;
   preview_url?: string | null;
+  github_url?: string | null;
   degraded?: boolean;
   updated_at?: string;
 };
@@ -184,6 +185,7 @@ type RemoteJob = {
   exit_code?: number | null;
   error?: string | null;
   preview_url?: string | null;
+  github_url?: string | null;
   log_tail?: string[];
   verdicts?: RunDetail["verdicts"];
   has_report?: boolean;
@@ -212,6 +214,7 @@ function mapJob(job: RemoteJob): RunDetail {
     report: null,
     error: job.error || null,
     preview_url: job.preview_url || null,
+    github_url: job.github_url || null,
     degraded: job.degraded,
     source: "render",
   };
